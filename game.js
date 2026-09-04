@@ -68,14 +68,12 @@ class Game {
         const cell = this.grid.pixelToCell(mouseX, mouseY);
 
         if (cell && this.selectedTower) {
-            // Пытаемся установить башню
             this.tryPlaceTower(cell.row, cell.col);
         } else if (cell) {
             const cellData = this.grid.getCell(cell.row, cell.col);
             if (cellData.tower) {
-                // Показываем информацию о башне
                 const tower = cellData.tower;
-                console.log(`Башня: ${tower.name} | Урон: ${tower.damage} | Перезарядка: ${tower.cooldown}с`);
+                console.log(`Башня: ${tower.name} | Урон: ${tower.damage}`);
             } else {
                 console.log(`Клетка [${cell.row}, ${cell.col}] свободна`);
             }
@@ -102,6 +100,7 @@ class Game {
                 }
                 break;
             case ' ':
+                e.preventDefault();
                 if (this.state === 'prepare') {
                     this.startWave();
                 }
@@ -117,7 +116,6 @@ class Game {
         if (towerConfig) {
             this.selectedTower = towerConfig;
             
-            // Обновляем визуал кнопок
             const btn = document.querySelector(`[data-tower="${towerId}"]`);
             if (btn) {
                 this.ui.selectTower(towerId, btn);
@@ -138,7 +136,7 @@ class Game {
 
     tryPlaceTower(row, col) {
         if (!this.selectedTower) {
-            console.log('Башня не выбрана! Нажмите 1-4 для выбора.');
+            console.log('Башня не выбрана! Нажмите 1-4.');
             return;
         }
 
@@ -152,7 +150,6 @@ class Game {
             return;
         }
 
-        // Создаём башню (или ловушку)
         let tower;
         if (this.selectedTower.id === 'trap') {
             tower = new Trap(this.selectedTower.cost, this.selectedTower.damage);
@@ -170,7 +167,6 @@ class Game {
             );
         }
 
-        // Устанавливаем на сетку
         if (this.grid.placeTower(row, col, tower)) {
             this.energy.spend(this.selectedTower.cost);
             console.log(`✅ Башня ${tower.name} установлена на [${row}, ${col}]`);
@@ -202,8 +198,16 @@ class Game {
         console.log(`\n=== АКТ ${this.currentAct.id}: ${this.currentAct.title} ===`);
         console.log(this.currentAct.description);
         
-        // Показываем диалог акта
-        this.ui.showActDialogue(this.currentAct);
+        // Показываем кат-сцену
+        const cutscene = CONFIG.CUTSCENES[actIndex];
+        if (cutscene) {
+            this.state = 'dialogue';
+            this.ui.showCutscene(cutscene, () => {
+                this.state = 'prepare';
+                this.updateUI();
+                console.log('Кат-сцена завершена. Готовьтесь к бою!');
+            });
+        }
     }
 
     loadNextAct() {
@@ -212,8 +216,10 @@ class Game {
     }
 
     onReactorDestroyed() {
+        if (this.state === 'lose') return;
         this.state = 'lose';
         this.updateUI();
+        this.ui.showLoseScreen();
         console.log('💀 ИГРА ОКОНЧЕНА!');
     }
 
@@ -225,7 +231,6 @@ class Game {
     }
 
     gameLoop(timestamp) {
-        // Вычисляем delta time
         if (this.lastTimestamp === 0) {
             this.lastTimestamp = timestamp;
         }
@@ -233,13 +238,9 @@ class Game {
         this.lastTimestamp = timestamp;
         this.gameTime += deltaTime;
 
-        // Обновление логики
         this.update(timestamp);
-
-        // Отрисовка
         this.renderer.draw(this);
 
-        // Следующий кадр
         requestAnimationFrame((ts) => this.gameLoop(ts));
     }
 
@@ -251,13 +252,10 @@ class Game {
         if (this.state === 'battle') {
             this.waveController.update(timestamp, this);
 
-            // Проверяем, завершена ли волна
             if (this.waveController.isWaveComplete(this)) {
                 if (this.waveController.isActComplete(this)) {
-                    // Акт пройден!
                     this.onActCompleted();
                 } else {
-                    // Переходим к следующей волне
                     this.waveController.advanceToNextWave();
                     this.state = 'prepare';
                     this.updateUI();
@@ -271,7 +269,6 @@ class Game {
             enemy.update(timestamp, this);
         }
 
-        // Убираем мёртвых врагов
         this.enemies = this.enemies.filter(e => e.isAlive);
 
         // Обновляем башни
@@ -285,7 +282,6 @@ class Game {
             proj.update(timestamp, this);
         }
 
-        // Убираем отработанные снаряды
         this.projectiles = this.projectiles.filter(p => p.isAlive);
 
         // Обновляем эффекты
@@ -293,19 +289,13 @@ class Game {
             effect.update(timestamp);
         }
 
-        // Убираем отработанные эффекты
         this.effects = this.effects.filter(e => e.isAlive);
-
-        // Обновляем UI
-        this.updateUI();
     }
 
     onActCompleted() {
         this.state = 'prepare';
         this.updateUI();
         console.log(`\n🏆 АКТ ${this.currentAct.id} ПРОЙДЕН!`);
-        
-        // Показываем экран победы
         this.ui.showWinScreen(this.currentAct.id);
     }
 
@@ -314,10 +304,7 @@ class Game {
     }
 
     start() {
-        // Загружаем первый акт
         this.loadAct(0);
-
-        // Запускаем игровой цикл
         requestAnimationFrame((ts) => this.gameLoop(ts));
     }
 }
