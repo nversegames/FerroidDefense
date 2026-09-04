@@ -10,13 +10,24 @@ class UI {
     }
 
     setupButtons() {
-        // Кнопки башен
-        document.querySelectorAll('.tower-btn').forEach(btn => {
+        // Кнопки шаров
+        document.querySelectorAll('.ball-btn').forEach(btn => {
             btn.addEventListener('click', () => {
-                const tower = CONFIG.TOWERS.find(t => t.id === btn.dataset.tower);
-                if (tower) {
-                    this.game.selectedTowerType = tower;
-                    this.updateTowerButtons();
+                const ball = CONFIG.BALLS.find(b => b.id === btn.dataset.ball);
+                if (ball) {
+                    this.game.selectedBallType = ball;
+                    this.updateBallButtons();
+                }
+            });
+        });
+
+        // Кнопки модулей
+        document.querySelectorAll('.module-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const module = CONFIG.MODULES.find(m => m.id === btn.dataset.module);
+                if (module) {
+                    this.game.selectedModuleType = module;
+                    this.updateModuleButtons();
                 }
             });
         });
@@ -26,11 +37,35 @@ class UI {
         waveBtn.addEventListener('click', () => {
             this.game.startWave();
         });
+
+        // Кнопки меню
+        document.getElementById('menuBtn').addEventListener('click', () => {
+            this.game.showMainMenu();
+        });
+
+        document.getElementById('researchBtn').addEventListener('click', () => {
+            this.game.showResearch();
+        });
+
+        document.getElementById('captureBtn').addEventListener('click', () => {
+            this.game.showCapture();
+        });
+
+        document.getElementById('shopBtn').addEventListener('click', () => {
+            this.game.showShop();
+        });
     }
 
-    updateTowerButtons() {
-        document.querySelectorAll('.tower-btn').forEach(btn => {
-            const isSelected = this.game.selectedTowerType && btn.dataset.tower === this.game.selectedTowerType.id;
+    updateBallButtons() {
+        document.querySelectorAll('.ball-btn').forEach(btn => {
+            const isSelected = this.game.selectedBallType && btn.dataset.ball === this.game.selectedBallType.id;
+            btn.classList.toggle('selected', isSelected);
+        });
+    }
+
+    updateModuleButtons() {
+        document.querySelectorAll('.module-btn').forEach(btn => {
+            const isSelected = this.game.selectedModuleType && btn.dataset.module === this.game.selectedModuleType.id;
             btn.classList.toggle('selected', isSelected);
         });
     }
@@ -38,6 +73,7 @@ class UI {
     updateHUD() {
         document.getElementById('energyDisplay').textContent = `⚡ ${Math.floor(this.game.energy)}`;
         document.getElementById('reactorHealth').textContent = `❤️ ${this.game.reactorHealth}`;
+        document.getElementById('moneyDisplay').textContent = `💰 ${this.game.money}`;
         
         if (this.game.currentAct()) {
             document.getElementById('waveInfo').textContent = `Волна: ${this.game.currentWaveIndex + 1}/${this.game.currentAct().waves.length}`;
@@ -64,16 +100,41 @@ class UI {
         } else if (state === 'menu') {
             btn.disabled = true;
             btn.textContent = '🏠 МЕНЮ';
+        } else if (state === 'shop' || state === 'research' || state === 'capture') {
+            btn.disabled = true;
+            btn.textContent = '🛒 МАГАЗИН';
         }
+    }
+
+    showNotification(text, icon = 'ℹ️') {
+        const notification = document.createElement('div');
+        notification.className = 'notification';
+        notification.innerHTML = `
+            <div style="font-size: 24px;">${icon}</div>
+            <div style="color: #fff;">${text}</div>
+        `;
+
+        document.body.appendChild(notification);
+
+        setTimeout(() => {
+            notification.style.animation = 'slideOut 0.5s ease-in';
+            setTimeout(() => notification.remove(), 500);
+        }, 3000);
     }
 
     // ============ ГЛАВНОЕ МЕНЮ ============
     showMainMenu() {
         const container = document.getElementById('gameContainer');
         
-        // Удаляем старое меню
+        // Удаляем старые меню
         const oldMenu = container.querySelector('.menu-container');
         if (oldMenu) oldMenu.remove();
+        const oldShop = container.querySelector('.shop-container');
+        if (oldShop) oldShop.remove();
+        const oldResearch = container.querySelector('.research-container');
+        if (oldResearch) oldResearch.remove();
+        const oldCapture = container.querySelector('.capture-container');
+        if (oldCapture) oldCapture.remove();
 
         const menu = document.createElement('div');
         menu.className = 'menu-container';
@@ -104,11 +165,14 @@ class UI {
                     ${levelCards}
                 </div>
                 
-                <div style="margin-top: 20px;">
-                    <div style="color: #aaa; font-size: 14px; margin-bottom: 10px;">
-                        Убийств: ${this.game.stats.kills} | Башен: ${this.game.stats.towersBuilt} | Волн: ${this.game.stats.totalWavesCompleted}
-                    </div>
-                    <button class="back-button" onclick="game.showMainMenu()">Обновить меню</button>
+                <div style="margin-top: 20px; display: flex; gap: 10px;">
+                    <button class="shop-button" onclick="game.showShop()">🛒 Магазин</button>
+                    <button class="research-button" onclick="game.showResearch()">🔬 Исследования</button>
+                    <button class="capture-button" onclick="game.showCapture()">🔒 Пленные</button>
+                </div>
+                
+                <div style="margin-top: 20px; color: #aaa; font-size: 14px;">
+                    Убийств: ${this.game.stats.kills} | Денег: ${this.game.money} | Волн: ${this.game.stats.totalWavesCompleted}
                 </div>
             </div>
         `;
@@ -129,6 +193,257 @@ class UI {
         if (menu) menu.remove();
         this.game.state = 'prepare';
         this.updateHUD();
+    }
+
+    // ============ МАГАЗИН ============
+    showShop() {
+        const container = document.getElementById('gameContainer');
+        const oldShop = container.querySelector('.shop-container');
+        if (oldShop) oldShop.remove();
+
+        const shop = document.createElement('div');
+        shop.className = 'shop-container';
+        
+        let upgradesHtml = '';
+        CONFIG.UPGRADES.forEach(upgrade => {
+            const isBought = this.game.upgrades.includes(upgrade.id);
+            const canAfford = this.game.money >= upgrade.cost;
+            
+            upgradesHtml += `
+                <div class="upgrade-item ${isBought ? 'bought' : ''}" data-upgrade="${upgrade.id}">
+                    <div class="upgrade-icon">💪</div>
+                    <div class="upgrade-info">
+                        <div class="upgrade-name">${upgrade.name}</div>
+                        <div class="upgrade-desc">${this.getUpgradeDescription(upgrade)}</div>
+                    </div>
+                    <div class="upgrade-cost ${isBought ? 'owned' : canAfford ? 'affordable' : 'expensive'}">
+                        ${isBought ? '✓ Куплено' : `${upgrade.cost}💰`}
+                    </div>
+                </div>
+            `;
+        });
+
+        shop.innerHTML = `
+            <div class="shop-content">
+                <div class="menu-title">🛒 МАГАЗИН</div>
+                <div style="color: #ffd700; font-size: 24px; margin-bottom: 20px;">💰 ${this.game.money}</div>
+                
+                ${upgradesHtml}
+                
+                <button class="back-button" onclick="game.showMainMenu()">← Назад</button>
+            </div>
+        `;
+
+        container.appendChild(shop);
+
+        // Привязываем события
+        shop.querySelectorAll('.upgrade-item:not(.bought)').forEach(item => {
+            item.addEventListener('click', () => {
+                const upgradeId = item.dataset.upgrade;
+                this.game.buyUpgrade(upgradeId);
+            });
+        });
+    }
+
+    getUpgradeDescription(upgrade) {
+        const effects = [];
+        if (upgrade.effect.ballDamageMultiplier) effects.push(`Урон шаров x${upgrade.effect.ballDamageMultiplier}`);
+        if (upgrade.effect.reloadSpeedMultiplier) effects.push(`Скорость перезарядки x${upgrade.effect.reloadSpeedMultiplier}`);
+        if (upgrade.effect.energyRegenMultiplier) effects.push(`Генерация энергии x${upgrade.effect.energyRegenMultiplier}`);
+        if (upgrade.effect.reactorHealthBonus) effects.push(`+${upgrade.effect.reactorHealthBonus} к здоровью реактора`);
+        if (upgrade.effect.moneyMultiplier) effects.push(`Деньги x${upgrade.effect.moneyMultiplier}`);
+        return effects.join(', ');
+    }
+
+    // ============ ИССЛЕДОВАНИЯ ============
+    showResearch() {
+        const container = document.getElementById('gameContainer');
+        const oldResearch = container.querySelector('.research-container');
+        if (oldResearch) oldResearch.remove();
+
+        const research = document.createElement('div');
+        research.className = 'research-container';
+        
+        let researchHtml = '';
+        CONFIG.RESEARCH.forEach(item => {
+            const isResearched = this.game.research.includes(item.id);
+            const canAfford = this.game.stats.researched >= item.cost;
+            
+            researchHtml += `
+                <div class="research-item ${isResearched ? 'researched' : ''}" data-research="${item.id}">
+                    <div class="research-icon">🔬</div>
+                    <div class="research-info">
+                        <div class="research-name">${item.name}</div>
+                        <div class="research-desc">${item.description}</div>
+                    </div>
+                    <div class="research-cost ${isResearched ? 'owned' : canAfford ? 'affordable' : 'expensive'}">
+                        ${isResearched ? '✓ Изучено' : `${item.cost}💡`}
+                    </div>
+                </div>
+            `;
+        });
+
+        // Исследования врагов
+        const enemyResearchHtml = this.getEnemyResearchHtml();
+
+        research.innerHTML = `
+            <div class="research-content">
+                <div class="menu-title">🔬 ИССЛЕДОВАНИЯ</div>
+                <div style="color: #00ff96; font-size: 20px; margin-bottom: 20px;">Очки знаний: ${this.game.stats.researched}💡</div>
+                
+                <h3 style="color: #ffcc00; margin: 20px 0;">Базовые исследования</h3>
+                ${researchHtml}
+                
+                <h3 style="color: #ffcc00; margin: 20px 0;">Исследования врагов</h3>
+                ${enemyResearchHtml}
+                
+                <button class="back-button" onclick="game.showMainMenu()">← Назад</button>
+            </div>
+        `;
+
+        container.appendChild(research);
+
+        // Привязываем события
+        research.querySelectorAll('.research-item:not(.researched)').forEach(item => {
+            item.addEventListener('click', () => {
+                const researchId = item.dataset.research;
+                this.game.buyResearch(researchId);
+            });
+        });
+
+        research.querySelectorAll('.enemy-research-item:not(.researched)').forEach(item => {
+            item.addEventListener('click', () => {
+                const enemyType = item.dataset.enemy;
+                this.researchEnemy(enemyType);
+            });
+        });
+    }
+
+    getEnemyResearchHtml() {
+        let html = '';
+        
+        // Проверяем, какие враги изучены
+        Object.keys(CONFIG.ENEMIES).forEach(enemyType => {
+            const enemy = CONFIG.ENEMIES[enemyType];
+            const isResearched = this.game.research.includes(`enemy_${enemyType}`);
+            const cost = 20 + Math.floor(Math.random() * 30);
+            
+            html += `
+                <div class="research-item enemy-research-item ${isResearched ? 'researched' : ''}" data-enemy="${enemyType}">
+                    <div class="research-icon">${enemy.icon}</div>
+                    <div class="research-info">
+                        <div class="research-name">${enemy.name}</div>
+                        <div class="research-desc">${enemy.description}</div>
+                    </div>
+                    <div class="research-cost ${isResearched ? 'owned' : ''}">
+                        ${isResearched ? '✓ Изучен' : `${cost}💡`}
+                    </div>
+                </div>
+            `;
+        });
+        
+        return html;
+    }
+
+    researchEnemy(enemyType) {
+        const cost = 20 + Math.floor(Math.random() * 30);
+        if (this.game.stats.researched >= cost && !this.game.research.includes(`enemy_${enemyType}`)) {
+            this.game.stats.researched -= cost;
+            this.game.research.push(`enemy_${enemyType}`);
+            this.game.saveProgress();
+            this.showResearch();
+        }
+    }
+
+    // ============ КОМНАТА ПЛЕННЫХ ============
+    showCapture() {
+        const container = document.getElementById('gameContainer');
+        const oldCapture = container.querySelector('.capture-container');
+        if (oldCapture) oldCapture.remove();
+
+        const capture = document.createElement('div');
+        capture.className = 'capture-container';
+        
+        let captivesHtml = '';
+        if (this.game.capturedEnemies.length === 0) {
+            captivesHtml = '<div style="color: #aaa; font-size: 18px;">Нет пленных врагов</div>';
+        } else {
+            this.game.capturedEnemies.forEach((enemy, index) => {
+                const isBeingResearched = enemy.isBeingResearched;
+                const progressPercent = Math.round(enemy.researchProgress * 100);
+                
+                captivesHtml += `
+                    <div class="captive-item" data-captive="${index}">
+                        <div class="captive-icon">${enemy.icon}</div>
+                        <div class="captive-info">
+                            <div class="captive-name">${enemy.name}</div>
+                            <div class="captive-desc">
+                                ${isBeingResearched ? 
+                                    `Изучение: ${progressPercent}%` : 
+                                    'Готов к изучению'}
+                            </div>
+                            ${isBeingResearched ? `
+                                <div style="width: 100%; background: #333; border-radius: 5px; margin-top: 5px;">
+                                    <div style="width: ${progressPercent}%; background: #00ff96; height: 10px; border-radius: 5px;"></div>
+                                </div>
+                            ` : ''}
+                        </div>
+                        <div class="captive-status">
+                            ${isBeingResearched ? 
+                                '<span style="color: #ffcc00;">⏳</span>' : 
+                                '<span style="color: #00ff96;">🔬 Начать</span>'}
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        capture.innerHTML = `
+            <div class="capture-content">
+                <div class="menu-title">🔒 КОМНАТА ПЛЕННЫХ</div>
+                <div style="color: #aaa; margin-bottom: 20px;">
+                    Пленных: ${this.game.capturedEnemies.length}/5
+                </div>
+                
+                ${captivesHtml}
+                
+                <button class="back-button" onclick="game.showMainMenu()">← Назад</button>
+            </div>
+        `;
+
+        container.appendChild(capture);
+
+        // Привязываем события
+        capture.querySelectorAll('.captive-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const index = parseInt(item.dataset.captive);
+                this.startResearching(index);
+            });
+        });
+    }
+
+    startResearching(index) {
+        const enemy = this.game.capturedEnemies[index];
+        if (enemy && !enemy.isBeingResearched) {
+            enemy.isBeingResearched = true;
+            enemy.researchProgress = 0;
+            
+            // Симулируем изучение
+            const researchInterval = setInterval(() => {
+                enemy.researchProgress += 0.01;
+                
+                if (enemy.researchProgress >= 1) {
+                    clearInterval(researchInterval);
+                    enemy.isBeingResearched = false;
+                    this.game.stats.researched += 10;
+                    this.game.research.push(`enemy_${enemy.id}`);
+                    this.game.saveProgress();
+                    this.showCapture();
+                }
+            }, 100);
+            
+            this.showCapture();
+        }
     }
 
     // ============ КАТ-СЦЕНЫ ============
@@ -180,7 +495,7 @@ class UI {
                 ${'⭐'.repeat(stars)}${'☆'.repeat(3 - stars)}
             </div>
             <div class="text">Отличная работа! Братья продолжают борьбу.</div>
-            <div class="hint">Кликните для возврата в меню</div>
+            <div class="hint">Кликните для перехода в магазин</div>
         `;
 
         document.getElementById('gameContainer').appendChild(overlay);
@@ -210,22 +525,7 @@ class UI {
     // ============ ДОСТИЖЕНИЯ ============
     showAchievementUnlocked(achievement) {
         const notification = document.createElement('div');
-        notification.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: #2a2a2a;
-            border: 3px solid #ffcc00;
-            border-radius: 10px;
-            padding: 15px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            z-index: 10000;
-            animation: slideIn 0.5s ease-out;
-            box-shadow: 0 0 20px rgba(255, 204, 0, 0.5);
-        `;
-
+        notification.className = 'notification';
         notification.innerHTML = `
             <div style="font-size: 30px;">${achievement.icon}</div>
             <div>
