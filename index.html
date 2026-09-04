@@ -88,7 +88,13 @@
             transition: all 0.2s;
             pointer-events: auto;
             position: relative;
-            font-size: 30px;
+            overflow: hidden;
+        }
+
+        .ball-btn img {
+            width: 40px;
+            height: 40px;
+            object-fit: contain;
         }
 
         .ball-btn:hover {
@@ -149,8 +155,14 @@
             justify-content: center;
             transition: all 0.2s;
             pointer-events: auto;
-            font-size: 24px;
             position: relative;
+            overflow: hidden;
+        }
+
+        .module-btn img {
+            width: 35px;
+            height: 35px;
+            object-fit: contain;
         }
 
         .module-btn:hover {
@@ -200,7 +212,7 @@
             pointer-events: none;
         }
 
-        #menuBtn, #researchBtn, #captureBtn, #shopBtn {
+        #menuBtn, #researchBtn, #captureBtn, #shopBtn, #saveBtn {
             position: absolute;
             top: 10px;
             padding: 10px 20px;
@@ -220,8 +232,9 @@
         #researchBtn { left: 450px; }
         #captureBtn { left: 550px; }
         #shopBtn { left: 650px; }
+        #saveBtn { left: 750px; }
 
-        #menuBtn:hover, #researchBtn:hover, #captureBtn:hover, #shopBtn:hover {
+        #menuBtn:hover, #researchBtn:hover, #captureBtn:hover, #shopBtn:hover, #saveBtn:hover {
             background: #1a3a2a;
             box-shadow: 0 0 15px rgba(0, 255, 150, 0.3);
         }
@@ -277,7 +290,7 @@
         }
 
         /* Меню и магазин */
-        .menu-container, .shop-container, .research-container, .capture-container {
+        .menu-container, .shop-container, .research-container, .capture-container, .save-container {
             position: absolute;
             top: 0;
             left: 0;
@@ -291,7 +304,7 @@
             pointer-events: auto;
         }
 
-        .menu-content, .shop-content, .research-content, .capture-content {
+        .menu-content, .shop-content, .research-content, .capture-content, .save-content {
             text-align: center;
             color: white;
             width: 90%;
@@ -348,6 +361,14 @@
             justify-content: center;
             transition: all 0.3s;
             position: relative;
+            overflow: hidden;
+        }
+
+        .level-card img {
+            width: 80px;
+            height: 80px;
+            object-fit: cover;
+            border-radius: 10px;
         }
 
         .level-card.locked {
@@ -374,11 +395,6 @@
             color: #ffcc00;
         }
 
-        .level-icon {
-            font-size: 35px;
-            margin: 10px 0;
-        }
-
         .level-name {
             font-size: 10px;
             color: #aaa;
@@ -394,7 +410,7 @@
             color: #ffcc00;
         }
 
-        .back-button, .shop-button, .research-button, .capture-button {
+        .back-button, .shop-button, .research-button, .capture-button, .save-button {
             padding: 10px 20px;
             background: #2a2a2a;
             border: 2px solid #ff4444;
@@ -407,12 +423,12 @@
             pointer-events: auto;
         }
 
-        .back-button:hover, .shop-button:hover, .research-button:hover, .capture-button:hover {
+        .back-button:hover, .shop-button:hover, .research-button:hover, .capture-button:hover, .save-button:hover {
             background: #3a1a1a;
             box-shadow: 0 0 15px rgba(255, 68, 68, 0.3);
         }
 
-        .upgrade-item, .research-item, .captive-item {
+        .upgrade-item, .research-item, .captive-item, .save-item {
             background: #2a2a2a;
             border: 2px solid #555;
             border-radius: 10px;
@@ -427,34 +443,34 @@
             width: 80%;
         }
 
-        .upgrade-item:hover, .research-item:hover, .captive-item:hover {
+        .upgrade-item:hover, .research-item:hover, .captive-item:hover, .save-item:hover {
             border-color: #00ff96;
             box-shadow: 0 0 15px rgba(0, 255, 150, 0.3);
             background: #3a3a3a;
         }
 
-        .upgrade-icon, .research-icon, .captive-icon {
+        .upgrade-icon, .research-icon, .captive-icon, .save-icon {
             font-size: 30px;
             margin-right: 15px;
         }
 
-        .upgrade-info, .research-info, .captive-info {
+        .upgrade-info, .research-info, .captive-info, .save-info {
             flex: 1;
             text-align: left;
         }
 
-        .upgrade-name, .research-name, .captive-name {
+        .upgrade-name, .research-name, .captive-name, .save-name {
             font-weight: bold;
             color: #ffcc00;
             margin-bottom: 5px;
         }
 
-        .upgrade-desc, .research-desc, .captive-desc {
+        .upgrade-desc, .research-desc, .captive-desc, .save-desc {
             color: #aaa;
             font-size: 14px;
         }
 
-        .upgrade-cost, .research-cost, .captive-status {
+        .upgrade-cost, .research-cost, .captive-status, .save-status {
             color: #00ff96;
             font-weight: bold;
             margin-left: 15px;
@@ -499,6 +515,95 @@
             z-index: 3000;
             max-width: 200px;
         }
+
+        /* Стили для видео и спрайтов */
+        .video-container {
+            width: 100%;
+            height: 300px;
+            background: #000;
+            border: 2px solid #444;
+            border-radius: 10px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+
+        .video-container video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .character-portrait {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            border: 3px solid #00ff96;
+            overflow: hidden;
+            margin: 10px;
+            background: #2a2a2a;
+        }
+
+        .character-portrait img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .enemy-sprite {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            overflow: hidden;
+            margin: 5px;
+            background: #2a2a2a;
+            display: inline-block;
+        }
+
+        .enemy-sprite img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .save-slot {
+            background: #2a2a2a;
+            border: 2px solid #555;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 80%;
+            text-align: left;
+        }
+
+        .save-slot:hover {
+            border-color: #00ff96;
+            background: #3a3a3a;
+        }
+
+        .save-slot .slot-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .save-slot .slot-title {
+            color: #ffcc00;
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        .save-slot .slot-date {
+            color: #888;
+            font-size: 12px;
+        }
+
+        .save-slot .slot-info {
+            color: #aaa;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
@@ -514,35 +619,36 @@
             <button id="researchBtn">🔬 Исследования</button>
             <button id="captureBtn">🔒 Пленные</button>
             <button id="shopBtn">🛒 Магазин</button>
+            <button id="saveBtn">💾 Сохранить</button>
 
             <div id="ballPanel">
                 <div class="ball-btn" data-ball="fire" title="Огненный шар">
-                    <span>🔥</span>
+                    <img src="sprites/balls/fire_ball.png" alt="Огонь">
                     <span class="energy-cost">10⚡</span>
                     <span class="key">[1]</span>
                 </div>
                 <div class="ball-btn" data-ball="ice" title="Ледяной шар">
-                    <span>❄️</span>
+                    <img src="sprites/balls/ice_ball.png" alt="Лёд">
                     <span class="energy-cost">15⚡</span>
                     <span class="key">[2]</span>
                 </div>
                 <div class="ball-btn" data-ball="electric" title="Электрический шар">
-                    <span>⚡</span>
+                    <img src="sprites/balls/electric_ball.png" alt="Электричество">
                     <span class="energy-cost">20⚡</span>
                     <span class="key">[3]</span>
                 </div>
                 <div class="ball-btn" data-ball="explosive" title="Взрывной шар">
-                    <span>💥</span>
+                    <img src="sprites/balls/explosive_ball.png" alt="Взрыв">
                     <span class="energy-cost">25⚡</span>
                     <span class="key">[4]</span>
                 </div>
                 <div class="ball-btn" data-ball="acid" title="Кислотный шар">
-                    <span>☣️</span>
+                    <img src="sprites/balls/acid_ball.png" alt="Кислота">
                     <span class="energy-cost">30⚡</span>
                     <span class="key">[5]</span>
                 </div>
                 <div class="ball-btn" data-ball="net" title="Сетка для захвата">
-                    <span>🕸️</span>
+                    <img src="sprites/balls/net_ball.png" alt="Сетка">
                     <span class="energy-cost">40⚡</span>
                     <span class="key">[6]</span>
                 </div>
@@ -550,23 +656,23 @@
 
             <div id="modulePanel">
                 <div class="module-btn" data-module="pad" title="Подушка - замедляет врагов">
-                    <span>🧊</span>
+                    <img src="sprites/modules/pad.png" alt="Подушка">
                     <span class="cost">25⚡</span>
                 </div>
                 <div class="module-btn" data-module="trap" title="Ловушка - одноразовый урон">
-                    <span>💥</span>
+                    <img src="sprites/modules/trap.png" alt="Ловушка">
                     <span class="cost">75⚡</span>
                 </div>
                 <div class="module-btn" data-module="generator" title="Генератор - пассивная энергия">
-                    <span>⚡</span>
+                    <img src="sprites/modules/generator.png" alt="Генератор">
                     <span class="cost">50⚡</span>
                 </div>
                 <div class="module-btn" data-module="amplifier" title="Усилитель - увеличивает урон">
-                    <span>🔊</span>
+                    <img src="sprites/modules/amplifier.png" alt="Усилитель">
                     <span class="cost">100⚡</span>
                 </div>
                 <div class="module-btn" data-module="magnet" title="Магнит - притягивает врагов">
-                    <span>🧲</span>
+                    <img src="sprites/modules/magnet.png" alt="Магнит">
                     <span class="cost">80⚡</span>
                 </div>
             </div>
