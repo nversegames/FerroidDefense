@@ -1,549 +1,245 @@
 // ============================================
-// FERROID DEFENSE — ИГРОВАЯ ЛОГИКА
+// FERROID DEFENSE — ИНТЕРФЕЙС
 // ============================================
 
-class Game {
-    constructor() {
-        this.canvas = document.getElementById('gameCanvas');
-        this.ctx = this.canvas.getContext('2d');
-        this.canvas.width = CONFIG.GRID.OFFSET_X * 2 + CONFIG.GRID.COLS * CONFIG.GRID.CELL_SIZE;
-        this.canvas.height = CONFIG.GRID.OFFSET_Y * 2 + CONFIG.GRID.ROWS * CONFIG.GRID.CELL_SIZE;
-
-        this.state = 'prepare';
-        this.energy = CONFIG.ENERGY.START;
-        this.reactorHealth = CONFIG.REACTOR.MAX_HEALTH;
-        this.currentActIndex = 0;
-        this.currentWaveIndex = 0;
-        this.selectedTowerType = null;
-        this.lastRegenTime = 0;
-        this.lastSpawnTime = 0;
-        this.spawnQueue = [];
-        this.isSpawning = false;
-        this.allWavesDone = false;
-
-        this.towers = [];
-        this.enemies = [];
-        this.projectiles = [];
-        this.effects = [];
-
-        this.ui = new UI(this);
-        this.setupEvents();
-
-        console.log('✅ Ferroid Defense запущен');
+class UI {
+    constructor(game) {
+        this.game = game;
+        this.setupButtons();
+        console.log('✅ UI готов');
     }
 
-    setupEvents() {
-        this.canvas.addEventListener('click', (e) => this.onCanvasClick(e));
-        window.addEventListener('keydown', (e) => this.onKeyDown(e));
-    }
+    setupButtons() {
+        // Кнопки башен
+        document.querySelectorAll('.tower-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tower = CONFIG.TOWERS.find(t => t.id === btn.dataset.tower);
+                if (tower) {
+                    this.game.selectedTowerType = tower;
+                    this.updateTowerButtons();
+                }
+            });
+        });
 
-    onCanvasClick(e) {
-        const rect = this.canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        const cell = this.pixelToCell(x, y);
-
-        if (cell && this.selectedTowerType) {
-            this.placeTower(cell.row, cell.col);
-        }
-    }
-
-    onKeyDown(e) {
-        const tower = CONFIG.TOWERS.find(t => t.key === e.key);
-        if (tower) {
-            this.selectedTowerType = tower;
-            this.ui.updateTowerButtons();
-        }
-        if (e.key === ' ') {
-            e.preventDefault();
-            this.startWave();
-        }
-        if (e.key === 'r' && this.state === 'lose') {
-            location.reload();
-        }
-        if (e.key === 'Escape') {
-            this.selectedTowerType = null;
-            this.ui.updateTowerButtons();
-        }
-    }
-
-    pixelToCell(x, y) {
-        const col = Math.floor((x - CONFIG.GRID.OFFSET_X) / CONFIG.GRID.CELL_SIZE);
-        const row = Math.floor((y - CONFIG.GRID.OFFSET_Y) / CONFIG.GRID.CELL_SIZE);
-        if (row >= 0 && row < CONFIG.GRID.ROWS && col >= 0 && col < CONFIG.GRID.COLS) {
-            return { row, col };
-        }
-        return null;
-    }
-
-    cellCenter(row, col) {
-        return {
-            x: CONFIG.GRID.OFFSET_X + col * CONFIG.GRID.CELL_SIZE + CONFIG.GRID.CELL_SIZE / 2,
-            y: CONFIG.GRID.OFFSET_Y + row * CONFIG.GRID.CELL_SIZE + CONFIG.GRID.CELL_SIZE / 2,
-        };
-    }
-
-    laneY(lane) {
-        return CONFIG.GRID.OFFSET_Y + lane * CONFIG.GRID.CELL_SIZE + CONFIG.GRID.CELL_SIZE / 2;
-    }
-
-    reactorX() {
-        return CONFIG.GRID.OFFSET_X + CONFIG.GRID.COLS * CONFIG.GRID.CELL_SIZE + CONFIG.GRID.OFFSET_X - 30;
-    }
-
-    placeTower(row, col) {
-        const towerType = this.selectedTowerType;
-        if (!towerType) return;
-        if (this.energy < towerType.cost) return;
-        if (this.towers.some(t => t.row === row && t.col === col)) return;
-
-        this.energy -= towerType.cost;
-
-        this.towers.push({
-            ...towerType,
-            row,
-            col,
-            x: this.cellCenter(row, col).x,
-            y: this.cellCenter(row, col).y,
-            lastAttackTime: 0,
-            triggered: false,
+        // Кнопка волны
+        const waveBtn = document.getElementById('startWaveBtn');
+        waveBtn.addEventListener('click', () => {
+            this.game.startWave();
         });
     }
 
-    updateTowers(timestamp) {
-        if (this.state !== 'battle') return;
-
-        for (const tower of this.towers) {
-            if (tower.id === 'trap') {
-                const enemy = this.enemies.find(e =>
-                    e.isAlive && e.lane === tower.row && Math.abs(e.x - tower.x) < 30
-                );
-                if (enemy) {
-                    this.damageEnemy(enemy, tower.damage);
-                    this.spawnEffect(tower.x, tower.y, '#ff6600', 35);
-                    tower.triggered = true;
-                }
-                continue;
-            }
-
-            if (tower.id === 'slow_pad') {
-                for (const enemy of this.enemies) {
-                    if (enemy.isAlive && enemy.lane === tower.row) {
-                        enemy.slowTimer = tower.slowDuration;
-                        enemy.slowPercent = tower.slowPercent;
-                    }
-                }
-                continue;
-            }
-
-            if (timestamp - tower.lastAttackTime < tower.cooldown * 1000) continue;
-
-            const target = this.findTarget(tower);
-            if (target) {
-                tower.lastAttackTime = timestamp;
-                this.projectiles.push({
-                    x: tower.x,
-                    y: tower.y,
-                    target,
-                    damage: tower.damage,
-                    speed: tower.projectileSpeed,
-                    color: tower.color,
-                    isAlive: true,
-                });
-            }
-        }
-
-        this.towers = this.towers.filter(t => !t.triggered);
-    }
-
-    findTarget(tower) {
-        let closest = null;
-        let closestDist = Infinity;
-        for (const enemy of this.enemies) {
-            if (!enemy.isAlive || enemy.lane !== tower.row || enemy.isDiving) continue;
-            const dist = enemy.x - tower.x;
-            if (dist > 0 && dist < tower.range && dist < closestDist) {
-                closest = enemy;
-                closestDist = dist;
-            }
-        }
-        return closest;
-    }
-
-    spawnEnemy(typeId, lane) {
-        const type = CONFIG.ENEMIES[typeId];
-        if (!type) return;
-
-        this.enemies.push({
-            ...type,
-            lane,
-            x: -30,
-            y: this.laneY(lane),
-            maxHealth: type.health,
-            health: type.health,
-            isAlive: true,
-            isDiving: false,
-            state: 'moving',
-            slowPercent: 0,
-            slowTimer: 0,
-            lastAttackTime: 0,
-            radius: 22,
+    updateTowerButtons() {
+        document.querySelectorAll('.tower-btn').forEach(btn => {
+            const isSelected = this.game.selectedTowerType && btn.dataset.tower === this.game.selectedTowerType.id;
+            btn.classList.toggle('selected', isSelected);
         });
     }
 
-    updateEnemies(timestamp) {
-        const dt = (timestamp - (this._lastEnemyUpdate || timestamp)) / 1000;
-        this._lastEnemyUpdate = timestamp;
-
-        for (const enemy of this.enemies) {
-            if (!enemy.isAlive) continue;
-
-            if (enemy.slowTimer > 0) {
-                enemy.slowTimer -= dt;
-                if (enemy.slowTimer <= 0) enemy.slowPercent = 0;
-            }
-            const speed = enemy.speed * (1 - enemy.slowPercent);
-
-            if (enemy.state === 'moving') {
-                enemy.x += speed * dt * 60;
-
-                if (enemy.diveDistance && !enemy.isDiving && this.reactorX() - enemy.x < enemy.diveDistance) {
-                    enemy.isDiving = true;
-                    enemy.state = 'diving';
-                    setTimeout(() => {
-                        if (enemy.isAlive) {
-                            enemy.x = this.reactorX() - 40;
-                            enemy.isDiving = false;
-                            enemy.state = 'attacking';
-                        }
-                    }, 1500);
-                }
-
-                if (enemy.x >= this.reactorX()) {
-                    enemy.state = 'attacking';
-                }
-            }
-
-            if (enemy.state === 'attacking') {
-                if (enemy.attackCooldown && this.reactorX() - enemy.x > enemy.range) {
-                    enemy.x += speed * dt * 60;
-                } else if (enemy.attackCooldown) {
-                    if (timestamp - enemy.lastAttackTime >= enemy.attackCooldown * 1000) {
-                        enemy.lastAttackTime = timestamp;
-                        this.damageReactor(enemy.damage);
-                    }
-                } else {
-                    this.damageReactor(enemy.damage);
-                    enemy.isAlive = false;
-                    if (enemy.id === 'bomber') {
-                        this.spawnEffect(enemy.x, enemy.y, '#ff4400', 45);
-                    }
-                }
-            }
+    updateHUD() {
+        document.getElementById('energyDisplay').textContent = `⚡ ${Math.floor(this.game.energy)}`;
+        document.getElementById('reactorHealth').textContent = `❤️ ${this.game.reactorHealth}`;
+        
+        if (this.game.currentAct()) {
+            document.getElementById('waveInfo').textContent = `Волна: ${this.game.currentWaveIndex + 1}/${this.game.currentAct().waves.length}`;
         }
 
-        this.enemies = this.enemies.filter(e => e.isAlive);
-    }
+        const btn = document.getElementById('startWaveBtn');
+        const state = this.game.state;
 
-    damageEnemy(enemy, damage) {
-        if (!enemy.isAlive || enemy.isDiving) return;
-
-        if (enemy.armor > 0) {
-            if (damage < 50) return;
-            enemy.armor--;
-        }
-
-        enemy.health -= damage;
-
-        if (enemy.health <= 0) {
-            this.killEnemy(enemy);
+        if (state === 'prepare' && !this.game.allWavesDone) {
+            btn.disabled = false;
+            btn.textContent = '▶ НАЧАТЬ ВОЛНУ';
+        } else if (state === 'battle') {
+            btn.disabled = true;
+            btn.textContent = '⚔️ ИДЁТ БОЙ...';
+        } else if (state === 'dialogue') {
+            btn.disabled = true;
+            btn.textContent = '📖 КАТ-СЦЕНА...';
+        } else if (this.game.allWavesDone) {
+            btn.disabled = true;
+            btn.textContent = '✅ АКТ ПРОЙДЕН';
+        } else if (state === 'lose') {
+            btn.disabled = true;
+            btn.textContent = '💀 ПОРАЖЕНИЕ';
+        } else if (state === 'menu') {
+            btn.disabled = true;
+            btn.textContent = '🏠 МЕНЮ';
         }
     }
 
-    killEnemy(enemy) {
-        enemy.isAlive = false;
-        this.energy = Math.min(this.energy + enemy.reward, CONFIG.ENERGY.MAX);
-        this.spawnEffect(enemy.x, enemy.y, enemy.color, 30);
+    // ============ ГЛАВНОЕ МЕНЮ ============
+    showMainMenu() {
+        const container = document.getElementById('gameContainer');
+        
+        // Удаляем старое меню
+        const oldMenu = container.querySelector('.menu-container');
+        if (oldMenu) oldMenu.remove();
 
-        if (enemy.splitCount > 0) {
-            for (let i = 0; i < enemy.splitCount; i++) {
-                this.enemies.push({
-                    name: 'Осколок',
-                    icon: '🔹',
-                    health: 30,
-                    maxHealth: 30,
-                    speed: enemy.speed * 1.5,
-                    damage: 5,
-                    color: '#cc88ff',
-                    reward: 5,
-                    lane: enemy.lane,
-                    x: enemy.x + (Math.random() - 0.5) * 40,
-                    y: enemy.y + (Math.random() - 0.5) * 40,
-                    isAlive: true,
-                    isDiving: false,
-                    state: 'moving',
-                    slowPercent: 0,
-                    slowTimer: 0,
-                    lastAttackTime: 0,
-                    radius: 14,
-                });
-            }
-        }
+        const menu = document.createElement('div');
+        menu.className = 'menu-container';
+        
+        let levelCards = '';
+        CONFIG.ACTS.forEach((act, index) => {
+            const isUnlocked = this.game.progress.unlockedActs.includes(index);
+            const isCompleted = this.game.progress.completedActs.includes(index);
+            const stars = this.game.progress.stars[index] || 0;
+            
+            levelCards += `
+                <div class="level-card ${isUnlocked ? 'unlocked' : 'locked'} ${isCompleted ? 'completed' : ''}" 
+                     data-act="${index}">
+                    <div class="level-number">${index + 1}</div>
+                    <div class="level-icon">${CONFIG.CUTSCENES[index].icon}</div>
+                    <div class="level-name">${act.title}</div>
+                    ${isCompleted ? `<div class="stars">${'⭐'.repeat(stars)}</div>` : ''}
+                </div>
+            `;
+        });
 
-        if (enemy.id === 'sticky') {
-            for (const e of this.enemies) {
-                if (e.isAlive && e.lane === enemy.lane) {
-                    e.slowPercent = 0.5;
-                    e.slowTimer = 3;
-                }
-            }
-        }
+        menu.innerHTML = `
+            <div class="menu-content">
+                <div class="menu-title">FERROID DEFENSE</div>
+                <div class="menu-subtitle">Защита Башни от Ферроидов</div>
+                
+                <div class="level-grid">
+                    ${levelCards}
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <div style="color: #aaa; font-size: 14px; margin-bottom: 10px;">
+                        Убийств: ${this.game.stats.kills} | Башен: ${this.game.stats.towersBuilt} | Волн: ${this.game.stats.totalWavesCompleted}
+                    </div>
+                    <button class="back-button" onclick="game.showMainMenu()">Обновить меню</button>
+                </div>
+            </div>
+        `;
+
+        container.appendChild(menu);
+
+        // Привязываем события
+        menu.querySelectorAll('.level-card.unlocked').forEach(card => {
+            card.addEventListener('click', () => {
+                const actIndex = parseInt(card.dataset.act);
+                this.game.selectAct(actIndex);
+            });
+        });
     }
 
-    damageReactor(amount) {
-        this.reactorHealth -= amount;
-        if (this.reactorHealth <= 0) {
-            this.reactorHealth = 0;
-            this.onLose();
-        }
+    hideMainMenu() {
+        const menu = document.querySelector('.menu-container');
+        if (menu) menu.remove();
+        this.game.state = 'prepare';
+        this.updateHUD();
     }
 
-    updateProjectiles(timestamp) {
-        const dt = (timestamp - (this._lastProjUpdate || timestamp)) / 1000;
-        this._lastProjUpdate = timestamp;
+    // ============ КАТ-СЦЕНЫ ============
+    showCutscene(actIndex, onComplete) {
+        const cutscene = CONFIG.CUTSCENES[actIndex];
+        if (!cutscene) {
+            if (onComplete) onComplete();
+            return;
+        }
 
-        for (const proj of this.projectiles) {
-            if (!proj.target.isAlive) {
-                proj.isAlive = false;
-                continue;
-            }
+        this.game.state = 'dialogue';
+        this.updateHUD();
 
-            const dx = proj.target.x - proj.x;
-            const dy = proj.target.y - proj.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
+        const overlay = document.createElement('div');
+        overlay.className = 'overlay';
+        overlay.innerHTML = `
+            <div class="icon">${cutscene.icon}</div>
+            <div class="title">${cutscene.title}</div>
+            <div class="speaker" id="lineSpeaker">${cutscene.lines[0].speaker}</div>
+            <div class="text" id="lineText">${cutscene.lines[0].text}</div>
+            <div class="hint">Кликните для продолжения (${cutscene.lines.length} строк)</div>
+        `;
 
-            if (dist < 12) {
-                this.damageEnemy(proj.target, proj.damage);
-                proj.isAlive = false;
+        document.getElementById('gameContainer').appendChild(overlay);
+
+        let lineIndex = 0;
+
+        overlay.addEventListener('click', () => {
+            lineIndex++;
+
+            if (lineIndex < cutscene.lines.length) {
+                document.getElementById('lineSpeaker').textContent = cutscene.lines[lineIndex].speaker;
+                document.getElementById('lineText').textContent = cutscene.lines[lineIndex].text;
             } else {
-                const move = proj.speed * dt * 60 / dist;
-                proj.x += dx * move;
-                proj.y += dy * move;
+                overlay.remove();
+                if (onComplete) onComplete();
             }
-        }
-
-        this.projectiles = this.projectiles.filter(p => p.isAlive);
+        });
     }
 
-    spawnEffect(x, y, color, radius) {
-        this.effects.push({ x, y, color, radius, alpha: 0.8, isAlive: true });
+    // ============ ЭКРАН ПОБЕДЫ ============
+    showWinScreen(actTitle, stars, onComplete) {
+        const overlay = document.createElement('div');
+        overlay.className = 'overlay';
+        overlay.innerHTML = `
+            <div class="icon">🏆</div>
+            <div class="title" style="color: #00ff96;">${actTitle} ПРОЙДЕН</div>
+            <div class="text" style="font-size: 40px; margin: 20px 0;">
+                ${'⭐'.repeat(stars)}${'☆'.repeat(3 - stars)}
+            </div>
+            <div class="text">Отличная работа! Братья продолжают борьбу.</div>
+            <div class="hint">Кликните для возврата в меню</div>
+        `;
+
+        document.getElementById('gameContainer').appendChild(overlay);
+        overlay.addEventListener('click', () => {
+            overlay.remove();
+            if (onComplete) onComplete();
+        });
     }
 
-    updateEffects() {
-        for (const effect of this.effects) {
-            effect.alpha -= 0.03;
-            effect.radius -= 0.5;
-            if (effect.alpha <= 0) effect.isAlive = false;
-        }
-        this.effects = this.effects.filter(e => e.isAlive);
+    // ============ ЭКРАН ПОРАЖЕНИЯ ============
+    showLoseScreen(onComplete) {
+        const overlay = document.createElement('div');
+        overlay.className = 'overlay';
+        overlay.innerHTML = `
+            <div class="icon">💀</div>
+            <div class="title" style="color: #ff0000;">РЕАКТОР УНИЧТОЖЕН</div>
+            <div class="text">Ферроиды прорвали оборону.</div>
+            <div class="hint">Кликните для возврата в меню</div>
+        `;
+        document.getElementById('gameContainer').appendChild(overlay);
+        overlay.addEventListener('click', () => {
+            overlay.remove();
+            if (onComplete) onComplete();
+        });
     }
 
-    currentAct() {
-        return CONFIG.ACTS[this.currentActIndex];
-    }
+    // ============ ДОСТИЖЕНИЯ ============
+    showAchievementUnlocked(achievement) {
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #2a2a2a;
+            border: 3px solid #ffcc00;
+            border-radius: 10px;
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            z-index: 10000;
+            animation: slideIn 0.5s ease-out;
+            box-shadow: 0 0 20px rgba(255, 204, 0, 0.5);
+        `;
 
-    startWave() {
-        if (this.state !== 'prepare' || this.allWavesDone) return;
+        notification.innerHTML = `
+            <div style="font-size: 30px;">${achievement.icon}</div>
+            <div>
+                <div style="color: #ffcc00; font-weight: bold;">Достижение!</div>
+                <div style="color: #fff;">${achievement.name}</div>
+                <div style="color: #aaa; font-size: 12px;">${achievement.description}</div>
+            </div>
+        `;
 
-        const wave = this.currentAct().waves[this.currentWaveIndex];
-        if (!wave) return;
+        document.body.appendChild(notification);
 
-        this.state = 'battle';
-        this.spawnQueue = [];
-
-        for (let i = 0; i < wave.count; i++) {
-            const lane = wave.lane === -1
-                ? Math.floor(Math.random() * CONFIG.GRID.ROWS)
-                : wave.lane;
-            this.spawnQueue.push({ enemy: wave.enemy, lane });
-        }
-
-        this.isSpawning = true;
-        this.lastSpawnTime = 0;
-        this.ui.updateHUD();
-    }
-
-    updateWaves(timestamp) {
-        if (this.state !== 'battle') return;
-
-        if (this.isSpawning && this.spawnQueue.length > 0) {
-            if (timestamp - this.lastSpawnTime >= CONFIG.WAVES.SPAWN_INTERVAL * 1000) {
-                this.lastSpawnTime = timestamp;
-                const data = this.spawnQueue.shift();
-                this.spawnEnemy(data.enemy, data.lane);
-            }
-        }
-
-        if (this.isSpawning && this.spawnQueue.length === 0 && this.enemies.length === 0) {
-            this.isSpawning = false;
-            this.currentWaveIndex++;
-
-            if (this.currentWaveIndex >= this.currentAct().waves.length) {
-                this.allWavesDone = true;
-                this.state = 'prepare';
-                this.ui.showWinScreen(this.currentAct().title, () => this.nextAct());
-            } else {
-                this.state = 'prepare';
-            }
-        }
-    }
-
-    startAct(index) {
-        this.currentActIndex = index;
-        this.currentWaveIndex = 0;
-        this.allWavesDone = false;
-        this.enemies = [];
-        this.projectiles = [];
-        this.effects = [];
-        this.state = 'prepare';
-        this.ui.showCutscene(index);
-    }
-
-    nextAct() {
-        if (this.currentActIndex + 1 < CONFIG.ACTS.length) {
-            this.startAct(this.currentActIndex + 1);
-        }
-    }
-
-    updateEnergy(timestamp) {
-        if (timestamp - this.lastRegenTime >= 1000) {
-            this.lastRegenTime = timestamp;
-            this.energy = Math.min(this.energy + CONFIG.ENERGY.REGEN_PER_SECOND, CONFIG.ENERGY.MAX);
-        }
-    }
-
-    onLose() {
-        this.state = 'lose';
-        this.ui.showLoseScreen();
-    }
-
-    draw() {
-        const ctx = this.ctx;
-        const W = this.canvas.width;
-        const H = this.canvas.height;
-
-        ctx.fillStyle = '#1a1a1a';
-        ctx.fillRect(0, 0, W, H);
-
-        ctx.fillStyle = '#00ff96';
-        ctx.font = 'bold 28px Courier New';
-        ctx.textAlign = 'center';
-        ctx.fillText('FERROID DEFENSE', W / 2, 32);
-
-        // Спавн зона
-        ctx.fillStyle = 'rgba(255, 0, 0, 0.08)';
-        ctx.fillRect(0, CONFIG.GRID.OFFSET_Y, CONFIG.GRID.OFFSET_X - 20, CONFIG.GRID.ROWS * CONFIG.GRID.CELL_SIZE);
-        ctx.fillStyle = '#ff4444';
-        ctx.font = '14px Courier New';
-        ctx.fillText('СПАВН', (CONFIG.GRID.OFFSET_X - 20) / 2, CONFIG.GRID.OFFSET_Y + CONFIG.GRID.ROWS * CONFIG.GRID.CELL_SIZE / 2);
-
-        // Реактор зона
-        const rx = CONFIG.GRID.OFFSET_X + CONFIG.GRID.COLS * CONFIG.GRID.CELL_SIZE + 10;
-        const rw = CONFIG.GRID.OFFSET_X - 20;
-        ctx.fillStyle = 'rgba(0, 255, 150, 0.08)';
-        ctx.fillRect(rx, CONFIG.GRID.OFFSET_Y, rw, CONFIG.GRID.ROWS * CONFIG.GRID.CELL_SIZE);
-        ctx.fillStyle = '#00ff96';
-        ctx.fillText('РЕАКТОР', rx + rw / 2, CONFIG.GRID.OFFSET_Y + CONFIG.GRID.ROWS * CONFIG.GRID.CELL_SIZE / 2);
-
-        // Сетка
-        for (let row = 0; row < CONFIG.GRID.ROWS; row++) {
-            for (let col = 0; col < CONFIG.GRID.COLS; col++) {
-                const x = CONFIG.GRID.OFFSET_X + col * CONFIG.GRID.CELL_SIZE;
-                const y = CONFIG.GRID.OFFSET_Y + row * CONFIG.GRID.CELL_SIZE;
-                ctx.fillStyle = (row + col) % 2 === 0 ? '#2d2d2d' : '#282828';
-                ctx.fillRect(x, y, CONFIG.GRID.CELL_SIZE - 2, CONFIG.GRID.CELL_SIZE - 2);
-            }
-        }
-
-        // Башни
-        for (const tower of this.towers) {
-            ctx.fillStyle = tower.color;
-            ctx.beginPath();
-            ctx.arc(tower.x, tower.y, CONFIG.GRID.CELL_SIZE / 3, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            ctx.font = '28px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(tower.icon, tower.x, tower.y + 2);
-        }
-
-        // Враги
-        for (const enemy of this.enemies) {
-            if (!enemy.isAlive) continue;
-            ctx.globalAlpha = enemy.isDiving ? 0.3 : 1;
-            ctx.fillStyle = enemy.color;
-            ctx.beginPath();
-            ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.strokeStyle = '#000';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            ctx.font = '20px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(enemy.icon, enemy.x, enemy.y + 2);
-            ctx.globalAlpha = 1;
-
-            const hpW = enemy.radius * 2;
-            const hpX = enemy.x - hpW / 2;
-            const hpY = enemy.y - enemy.radius - 12;
-            ctx.fillStyle = '#333';
-            ctx.fillRect(hpX, hpY, hpW, 5);
-            ctx.fillStyle = enemy.health / enemy.maxHealth > 0.5 ? '#0f0' : enemy.health / enemy.maxHealth > 0.25 ? '#fc0' : '#f00';
-            ctx.fillRect(hpX, hpY, hpW * (enemy.health / enemy.maxHealth), 5);
-        }
-
-        // Снаряды
-        for (const proj of this.projectiles) {
-            ctx.fillStyle = proj.color;
-            ctx.beginPath();
-            ctx.arc(proj.x, proj.y, 5, 0, Math.PI * 2);
-            ctx.fill();
-        }
-
-        // Эффекты
-        for (const effect of this.effects) {
-            ctx.globalAlpha = effect.alpha;
-            ctx.fillStyle = effect.color;
-            ctx.beginPath();
-            ctx.arc(effect.x, effect.y, effect.radius, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.globalAlpha = 1;
-        }
-    }
-
-    loop(timestamp) {
-        this.updateEnergy(timestamp);
-        this.updateWaves(timestamp);
-        this.updateEnemies(timestamp);
-        this.updateTowers(timestamp);
-        this.updateProjectiles(timestamp);
-        this.updateEffects();
-        this.draw();
-        this.ui.updateHUD();
-
-        requestAnimationFrame((ts) => this.loop(ts));
-    }
-
-    start() {
-        this.startAct(0);
-        requestAnimationFrame((ts) => this.loop(ts));
+        setTimeout(() => {
+            notification.style.animation = 'slideOut 0.5s ease-in';
+            setTimeout(() => notification.remove(), 500);
+        }, 3000);
     }
 }
-
-// ============ ЗАПУСК ============
-const game = new Game();
-game.start();
