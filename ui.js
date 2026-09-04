@@ -1,263 +1,549 @@
-// ui.js — интерфейс: кнопки, панели, диалоги
+// ============================================
+// FERROID DEFENSE — ИГРОВАЯ ЛОГИКА
+// ============================================
 
-class UIManager {
-    constructor(game) {
-        this.game = game;
-        this.selectedTowerBtn = null;
-        
-        // Ждём загрузку DOM перед настройкой
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => {
-                this.setupAll();
-            });
-        } else {
-            this.setupAll();
+class Game {
+    constructor() {
+        this.canvas = document.getElementById('gameCanvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.canvas.width = CONFIG.GRID.OFFSET_X * 2 + CONFIG.GRID.COLS * CONFIG.GRID.CELL_SIZE;
+        this.canvas.height = CONFIG.GRID.OFFSET_Y * 2 + CONFIG.GRID.ROWS * CONFIG.GRID.CELL_SIZE;
+
+        this.state = 'prepare';
+        this.energy = CONFIG.ENERGY.START;
+        this.reactorHealth = CONFIG.REACTOR.MAX_HEALTH;
+        this.currentActIndex = 0;
+        this.currentWaveIndex = 0;
+        this.selectedTowerType = null;
+        this.lastRegenTime = 0;
+        this.lastSpawnTime = 0;
+        this.spawnQueue = [];
+        this.isSpawning = false;
+        this.allWavesDone = false;
+
+        this.towers = [];
+        this.enemies = [];
+        this.projectiles = [];
+        this.effects = [];
+
+        this.ui = new UI(this);
+        this.setupEvents();
+
+        console.log('✅ Ferroid Defense запущен');
+    }
+
+    setupEvents() {
+        this.canvas.addEventListener('click', (e) => this.onCanvasClick(e));
+        window.addEventListener('keydown', (e) => this.onKeyDown(e));
+    }
+
+    onCanvasClick(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const cell = this.pixelToCell(x, y);
+
+        if (cell && this.selectedTowerType) {
+            this.placeTower(cell.row, cell.col);
         }
     }
 
-    setupAll() {
-        console.log('🔧 Настройка UI...');
-        this.setupTowerButtons();
-        this.setupStartWaveButton();
-        console.log('✅ UI настроен');
-    }
-
-    // Настройка кнопок выбора башен
-    setupTowerButtons() {
-        const buttons = document.querySelectorAll('.tower-btn');
-        
-        console.log(`Найдено кнопок башен: ${buttons.length}`);
-        
-        buttons.forEach(btn => {
-            // Убираем старые обработчики
-            const oldHandler = btn._clickHandler;
-            if (oldHandler) {
-                btn.removeEventListener('click', oldHandler);
-            }
-            
-            // Создаём новый обработчик
-            btn._clickHandler = (e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                const towerId = btn.dataset.tower;
-                console.log(`Клик по башне: ${towerId}`);
-                this.selectTower(towerId, btn);
-            };
-            
-            btn.addEventListener('click', btn._clickHandler);
-        });
-    }
-
-    // Выбор башни
-    selectTower(towerId, btn) {
-        // Снимаем выделение с предыдущей
-        if (this.selectedTowerBtn) {
-            this.selectedTowerBtn.classList.remove('selected');
+    onKeyDown(e) {
+        const tower = CONFIG.TOWERS.find(t => t.key === e.key);
+        if (tower) {
+            this.selectedTowerType = tower;
+            this.ui.updateTowerButtons();
         }
-
-        // Выделяем новую
-        btn.classList.add('selected');
-        this.selectedTowerBtn = btn;
-
-        // Передаём в игру
-        const towerConfig = CONFIG.TOWERS[towerId.toUpperCase()];
-        if (towerConfig) {
-            this.game.selectedTower = towerConfig;
-            console.log(`Выбрана башня: ${towerConfig.name} (${towerConfig.cost}⚡)`);
-        }
-    }
-
-    // Настройка кнопки запуска волны
-    setupStartWaveButton() {
-        const btn = document.getElementById('startWaveBtn');
-        
-        if (!btn) {
-            console.error('❌ Кнопка startWaveBtn не найдена!');
-            return;
-        }
-        
-        console.log('✅ Кнопка startWaveBtn найдена');
-        
-        // Убираем старый обработчик
-        const oldHandler = btn._clickHandler;
-        if (oldHandler) {
-            btn.removeEventListener('click', oldHandler);
-        }
-        
-        // Новый обработчик
-        btn._clickHandler = (e) => {
-            e.stopPropagation();
+        if (e.key === ' ') {
             e.preventDefault();
-            console.log('🖱️ Клик по кнопке запуска волны');
-            
-            if (this.game.state === 'prepare') {
-                console.log('▶️ Запускаем волну...');
-                this.game.startWave();
-            } else {
-                console.log(`Нельзя запустить волну. Состояние: ${this.game.state}`);
-            }
-        };
-        
-        btn.addEventListener('click', btn._clickHandler);
-    }
-
-    // Обновление состояния кнопки волны
-    updateStartWaveButton() {
-        const btn = document.getElementById('startWaveBtn');
-        if (!btn) return;
-        
-        if (this.game.state === 'prepare' && !this.game.waveController.allWavesCompleted) {
-            btn.disabled = false;
-            btn.textContent = '▶ НАЧАТЬ ВОЛНУ';
-            btn.style.opacity = 1;
-            btn.style.cursor = 'pointer';
-            btn.style.pointerEvents = 'auto';
-        } else if (this.game.state === 'battle') {
-            btn.disabled = true;
-            btn.textContent = '⚔️ ИДЁТ БОЙ...';
-            btn.style.opacity = 0.5;
-            btn.style.cursor = 'not-allowed';
-            btn.style.pointerEvents = 'none';
-        } else if (this.game.state === 'dialogue') {
-            btn.disabled = true;
-            btn.textContent = '📖 КАТ-СЦЕНА...';
-            btn.style.opacity = 0.5;
-            btn.style.cursor = 'not-allowed';
-            btn.style.pointerEvents = 'none';
-        } else if (this.game.waveController.allWavesCompleted) {
-            btn.disabled = true;
-            btn.textContent = '✅ АКТ ПРОЙДЕН';
-            btn.style.opacity = 0.7;
-            btn.style.cursor = 'default';
-            btn.style.pointerEvents = 'none';
-        } else if (this.game.state === 'lose') {
-            btn.disabled = true;
-            btn.textContent = '💀 ПОРАЖЕНИЕ';
-            btn.style.opacity = 0.5;
-            btn.style.cursor = 'not-allowed';
-            btn.style.pointerEvents = 'none';
+            this.startWave();
+        }
+        if (e.key === 'r' && this.state === 'lose') {
+            location.reload();
+        }
+        if (e.key === 'Escape') {
+            this.selectedTowerType = null;
+            this.ui.updateTowerButtons();
         }
     }
 
-    // Показать диалог
-    showDialogue(speaker, text, onComplete) {
-        const overlay = document.createElement('div');
-        overlay.className = 'dialog-overlay';
-        overlay.style.zIndex = 1000;
-        overlay.style.pointerEvents = 'auto';
-        overlay.style.cursor = 'pointer';
-        
-        overlay.innerHTML = `
-            <div class="dialog-speaker">${speaker}</div>
-            <div class="dialog-text">${text}</div>
-            <div class="dialog-hint">Кликните, чтобы продолжить...</div>
-        `;
+    pixelToCell(x, y) {
+        const col = Math.floor((x - CONFIG.GRID.OFFSET_X) / CONFIG.GRID.CELL_SIZE);
+        const row = Math.floor((y - CONFIG.GRID.OFFSET_Y) / CONFIG.GRID.CELL_SIZE);
+        if (row >= 0 && row < CONFIG.GRID.ROWS && col >= 0 && col < CONFIG.GRID.COLS) {
+            return { row, col };
+        }
+        return null;
+    }
 
-        document.getElementById('gameContainer').appendChild(overlay);
+    cellCenter(row, col) {
+        return {
+            x: CONFIG.GRID.OFFSET_X + col * CONFIG.GRID.CELL_SIZE + CONFIG.GRID.CELL_SIZE / 2,
+            y: CONFIG.GRID.OFFSET_Y + row * CONFIG.GRID.CELL_SIZE + CONFIG.GRID.CELL_SIZE / 2,
+        };
+    }
 
-        overlay.addEventListener('click', () => {
-            overlay.remove();
-            if (onComplete) onComplete();
+    laneY(lane) {
+        return CONFIG.GRID.OFFSET_Y + lane * CONFIG.GRID.CELL_SIZE + CONFIG.GRID.CELL_SIZE / 2;
+    }
+
+    reactorX() {
+        return CONFIG.GRID.OFFSET_X + CONFIG.GRID.COLS * CONFIG.GRID.CELL_SIZE + CONFIG.GRID.OFFSET_X - 30;
+    }
+
+    placeTower(row, col) {
+        const towerType = this.selectedTowerType;
+        if (!towerType) return;
+        if (this.energy < towerType.cost) return;
+        if (this.towers.some(t => t.row === row && t.col === col)) return;
+
+        this.energy -= towerType.cost;
+
+        this.towers.push({
+            ...towerType,
+            row,
+            col,
+            x: this.cellCenter(row, col).x,
+            y: this.cellCenter(row, col).y,
+            lastAttackTime: 0,
+            triggered: false,
         });
     }
 
-    // Показать кат-сцену (стори-мод)
-    showCutscene(cutsceneData, onComplete) {
-        console.log(`🎬 Показываем кат-сцену: ${cutsceneData.title}`);
-        
-        const overlay = document.createElement('div');
-        overlay.className = 'dialog-overlay';
-        overlay.style.zIndex = 1000;
-        overlay.style.background = 'rgba(0, 0, 0, 0.95)';
-        overlay.style.pointerEvents = 'auto';
-        overlay.style.cursor = 'pointer';
-        
-        let html = `
-            <div style="text-align: center; margin-bottom: 30px;">
-                <div style="font-size: 60px; margin-bottom: 15px;">${cutsceneData.icon}</div>
-                <div style="font-size: 36px; color: #ffcc00; font-weight: bold; text-shadow: 0 0 20px #ffcc00;">
-                    ${cutsceneData.title}
-                </div>
-            </div>
-        `;
-        
-        // Строки диалога
-        cutsceneData.lines.forEach((line, index) => {
-            html += `
-                <div class="cutscene-line" data-index="${index}" style="display: ${index === 0 ? 'block' : 'none'}; text-align: center;">
-                    <div class="dialog-speaker" style="font-size: 22px;">${line.speaker}</div>
-                    <div class="dialog-text" style="font-size: 18px;">${line.text}</div>
-                </div>
-            `;
-        });
-        
-        html += `
-            <div class="dialog-hint" style="margin-top: 40px;">
-                Кликните для продолжения (${cutsceneData.lines.length} строк)
-            </div>
-        `;
-        
-        overlay.innerHTML = html;
-        document.getElementById('gameContainer').appendChild(overlay);
+    updateTowers(timestamp) {
+        if (this.state !== 'battle') return;
 
-        let currentLine = 0;
-        
-        overlay.addEventListener('click', () => {
-            currentLine++;
-            
-            if (currentLine < cutsceneData.lines.length) {
-                // Показываем следующую строку
-                const allLines = overlay.querySelectorAll('.cutscene-line');
-                allLines.forEach(line => line.style.display = 'none');
-                allLines[currentLine].style.display = 'block';
-                console.log(`📖 Строка ${currentLine + 1}/${cutsceneData.lines.length}`);
-            } else {
-                // Кат-сцена завершена
-                console.log('✅ Кат-сцена завершена');
-                overlay.remove();
-                if (onComplete) onComplete();
+        for (const tower of this.towers) {
+            if (tower.id === 'trap') {
+                const enemy = this.enemies.find(e =>
+                    e.isAlive && e.lane === tower.row && Math.abs(e.x - tower.x) < 30
+                );
+                if (enemy) {
+                    this.damageEnemy(enemy, tower.damage);
+                    this.spawnEffect(tower.x, tower.y, '#ff6600', 35);
+                    tower.triggered = true;
+                }
+                continue;
             }
+
+            if (tower.id === 'slow_pad') {
+                for (const enemy of this.enemies) {
+                    if (enemy.isAlive && enemy.lane === tower.row) {
+                        enemy.slowTimer = tower.slowDuration;
+                        enemy.slowPercent = tower.slowPercent;
+                    }
+                }
+                continue;
+            }
+
+            if (timestamp - tower.lastAttackTime < tower.cooldown * 1000) continue;
+
+            const target = this.findTarget(tower);
+            if (target) {
+                tower.lastAttackTime = timestamp;
+                this.projectiles.push({
+                    x: tower.x,
+                    y: tower.y,
+                    target,
+                    damage: tower.damage,
+                    speed: tower.projectileSpeed,
+                    color: tower.color,
+                    isAlive: true,
+                });
+            }
+        }
+
+        this.towers = this.towers.filter(t => !t.triggered);
+    }
+
+    findTarget(tower) {
+        let closest = null;
+        let closestDist = Infinity;
+        for (const enemy of this.enemies) {
+            if (!enemy.isAlive || enemy.lane !== tower.row || enemy.isDiving) continue;
+            const dist = enemy.x - tower.x;
+            if (dist > 0 && dist < tower.range && dist < closestDist) {
+                closest = enemy;
+                closestDist = dist;
+            }
+        }
+        return closest;
+    }
+
+    spawnEnemy(typeId, lane) {
+        const type = CONFIG.ENEMIES[typeId];
+        if (!type) return;
+
+        this.enemies.push({
+            ...type,
+            lane,
+            x: -30,
+            y: this.laneY(lane),
+            maxHealth: type.health,
+            health: type.health,
+            isAlive: true,
+            isDiving: false,
+            state: 'moving',
+            slowPercent: 0,
+            slowTimer: 0,
+            lastAttackTime: 0,
+            radius: 22,
         });
     }
 
-    // Показать экран проигрыша
-    showLoseScreen() {
-        const overlay = document.createElement('div');
-        overlay.className = 'dialog-overlay';
-        overlay.style.zIndex = 1000;
-        overlay.style.pointerEvents = 'auto';
-        overlay.style.cursor = 'pointer';
-        
-        overlay.innerHTML = `
-            <div style="font-size: 60px; margin-bottom: 20px;">💀</div>
-            <div class="dialog-speaker" style="color: #ff0000; font-size: 36px;">РЕАКТОР УНИЧТОЖЕН</div>
-            <div class="dialog-text">Ферроиды прорвали оборону. Башня пала.</div>
-            <div class="dialog-text" style="color: #888; margin-top: 20px;">Нажмите R для перезапуска</div>
-        `;
+    updateEnemies(timestamp) {
+        const dt = (timestamp - (this._lastEnemyUpdate || timestamp)) / 1000;
+        this._lastEnemyUpdate = timestamp;
 
-        document.getElementById('gameContainer').appendChild(overlay);
+        for (const enemy of this.enemies) {
+            if (!enemy.isAlive) continue;
+
+            if (enemy.slowTimer > 0) {
+                enemy.slowTimer -= dt;
+                if (enemy.slowTimer <= 0) enemy.slowPercent = 0;
+            }
+            const speed = enemy.speed * (1 - enemy.slowPercent);
+
+            if (enemy.state === 'moving') {
+                enemy.x += speed * dt * 60;
+
+                if (enemy.diveDistance && !enemy.isDiving && this.reactorX() - enemy.x < enemy.diveDistance) {
+                    enemy.isDiving = true;
+                    enemy.state = 'diving';
+                    setTimeout(() => {
+                        if (enemy.isAlive) {
+                            enemy.x = this.reactorX() - 40;
+                            enemy.isDiving = false;
+                            enemy.state = 'attacking';
+                        }
+                    }, 1500);
+                }
+
+                if (enemy.x >= this.reactorX()) {
+                    enemy.state = 'attacking';
+                }
+            }
+
+            if (enemy.state === 'attacking') {
+                if (enemy.attackCooldown && this.reactorX() - enemy.x > enemy.range) {
+                    enemy.x += speed * dt * 60;
+                } else if (enemy.attackCooldown) {
+                    if (timestamp - enemy.lastAttackTime >= enemy.attackCooldown * 1000) {
+                        enemy.lastAttackTime = timestamp;
+                        this.damageReactor(enemy.damage);
+                    }
+                } else {
+                    this.damageReactor(enemy.damage);
+                    enemy.isAlive = false;
+                    if (enemy.id === 'bomber') {
+                        this.spawnEffect(enemy.x, enemy.y, '#ff4400', 45);
+                    }
+                }
+            }
+        }
+
+        this.enemies = this.enemies.filter(e => e.isAlive);
     }
 
-    // Показать экран победы
-    showWinScreen(actId) {
-        const overlay = document.createElement('div');
-        overlay.className = 'dialog-overlay';
-        overlay.style.zIndex = 1000;
-        overlay.style.pointerEvents = 'auto';
-        overlay.style.cursor = 'pointer';
-        
-        overlay.innerHTML = `
-            <div style="font-size: 60px; margin-bottom: 20px;">🏆</div>
-            <div class="dialog-speaker" style="color: #00ff96; font-size: 36px;">АКТ ${actId} ПРОЙДЕН</div>
-            <div class="dialog-text">Отличная работа! Братья продолжают борьбу.</div>
-            <div class="dialog-hint" style="margin-top: 30px;">Кликните для продолжения</div>
-        `;
+    damageEnemy(enemy, damage) {
+        if (!enemy.isAlive || enemy.isDiving) return;
 
-        document.getElementById('gameContainer').appendChild(overlay);
+        if (enemy.armor > 0) {
+            if (damage < 50) return;
+            enemy.armor--;
+        }
 
-        overlay.addEventListener('click', () => {
-            overlay.remove();
-            this.game.loadNextAct();
-        });
+        enemy.health -= damage;
+
+        if (enemy.health <= 0) {
+            this.killEnemy(enemy);
+        }
+    }
+
+    killEnemy(enemy) {
+        enemy.isAlive = false;
+        this.energy = Math.min(this.energy + enemy.reward, CONFIG.ENERGY.MAX);
+        this.spawnEffect(enemy.x, enemy.y, enemy.color, 30);
+
+        if (enemy.splitCount > 0) {
+            for (let i = 0; i < enemy.splitCount; i++) {
+                this.enemies.push({
+                    name: 'Осколок',
+                    icon: '🔹',
+                    health: 30,
+                    maxHealth: 30,
+                    speed: enemy.speed * 1.5,
+                    damage: 5,
+                    color: '#cc88ff',
+                    reward: 5,
+                    lane: enemy.lane,
+                    x: enemy.x + (Math.random() - 0.5) * 40,
+                    y: enemy.y + (Math.random() - 0.5) * 40,
+                    isAlive: true,
+                    isDiving: false,
+                    state: 'moving',
+                    slowPercent: 0,
+                    slowTimer: 0,
+                    lastAttackTime: 0,
+                    radius: 14,
+                });
+            }
+        }
+
+        if (enemy.id === 'sticky') {
+            for (const e of this.enemies) {
+                if (e.isAlive && e.lane === enemy.lane) {
+                    e.slowPercent = 0.5;
+                    e.slowTimer = 3;
+                }
+            }
+        }
+    }
+
+    damageReactor(amount) {
+        this.reactorHealth -= amount;
+        if (this.reactorHealth <= 0) {
+            this.reactorHealth = 0;
+            this.onLose();
+        }
+    }
+
+    updateProjectiles(timestamp) {
+        const dt = (timestamp - (this._lastProjUpdate || timestamp)) / 1000;
+        this._lastProjUpdate = timestamp;
+
+        for (const proj of this.projectiles) {
+            if (!proj.target.isAlive) {
+                proj.isAlive = false;
+                continue;
+            }
+
+            const dx = proj.target.x - proj.x;
+            const dy = proj.target.y - proj.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (dist < 12) {
+                this.damageEnemy(proj.target, proj.damage);
+                proj.isAlive = false;
+            } else {
+                const move = proj.speed * dt * 60 / dist;
+                proj.x += dx * move;
+                proj.y += dy * move;
+            }
+        }
+
+        this.projectiles = this.projectiles.filter(p => p.isAlive);
+    }
+
+    spawnEffect(x, y, color, radius) {
+        this.effects.push({ x, y, color, radius, alpha: 0.8, isAlive: true });
+    }
+
+    updateEffects() {
+        for (const effect of this.effects) {
+            effect.alpha -= 0.03;
+            effect.radius -= 0.5;
+            if (effect.alpha <= 0) effect.isAlive = false;
+        }
+        this.effects = this.effects.filter(e => e.isAlive);
+    }
+
+    currentAct() {
+        return CONFIG.ACTS[this.currentActIndex];
+    }
+
+    startWave() {
+        if (this.state !== 'prepare' || this.allWavesDone) return;
+
+        const wave = this.currentAct().waves[this.currentWaveIndex];
+        if (!wave) return;
+
+        this.state = 'battle';
+        this.spawnQueue = [];
+
+        for (let i = 0; i < wave.count; i++) {
+            const lane = wave.lane === -1
+                ? Math.floor(Math.random() * CONFIG.GRID.ROWS)
+                : wave.lane;
+            this.spawnQueue.push({ enemy: wave.enemy, lane });
+        }
+
+        this.isSpawning = true;
+        this.lastSpawnTime = 0;
+        this.ui.updateHUD();
+    }
+
+    updateWaves(timestamp) {
+        if (this.state !== 'battle') return;
+
+        if (this.isSpawning && this.spawnQueue.length > 0) {
+            if (timestamp - this.lastSpawnTime >= CONFIG.WAVES.SPAWN_INTERVAL * 1000) {
+                this.lastSpawnTime = timestamp;
+                const data = this.spawnQueue.shift();
+                this.spawnEnemy(data.enemy, data.lane);
+            }
+        }
+
+        if (this.isSpawning && this.spawnQueue.length === 0 && this.enemies.length === 0) {
+            this.isSpawning = false;
+            this.currentWaveIndex++;
+
+            if (this.currentWaveIndex >= this.currentAct().waves.length) {
+                this.allWavesDone = true;
+                this.state = 'prepare';
+                this.ui.showWinScreen(this.currentAct().title, () => this.nextAct());
+            } else {
+                this.state = 'prepare';
+            }
+        }
+    }
+
+    startAct(index) {
+        this.currentActIndex = index;
+        this.currentWaveIndex = 0;
+        this.allWavesDone = false;
+        this.enemies = [];
+        this.projectiles = [];
+        this.effects = [];
+        this.state = 'prepare';
+        this.ui.showCutscene(index);
+    }
+
+    nextAct() {
+        if (this.currentActIndex + 1 < CONFIG.ACTS.length) {
+            this.startAct(this.currentActIndex + 1);
+        }
+    }
+
+    updateEnergy(timestamp) {
+        if (timestamp - this.lastRegenTime >= 1000) {
+            this.lastRegenTime = timestamp;
+            this.energy = Math.min(this.energy + CONFIG.ENERGY.REGEN_PER_SECOND, CONFIG.ENERGY.MAX);
+        }
+    }
+
+    onLose() {
+        this.state = 'lose';
+        this.ui.showLoseScreen();
+    }
+
+    draw() {
+        const ctx = this.ctx;
+        const W = this.canvas.width;
+        const H = this.canvas.height;
+
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(0, 0, W, H);
+
+        ctx.fillStyle = '#00ff96';
+        ctx.font = 'bold 28px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('FERROID DEFENSE', W / 2, 32);
+
+        // Спавн зона
+        ctx.fillStyle = 'rgba(255, 0, 0, 0.08)';
+        ctx.fillRect(0, CONFIG.GRID.OFFSET_Y, CONFIG.GRID.OFFSET_X - 20, CONFIG.GRID.ROWS * CONFIG.GRID.CELL_SIZE);
+        ctx.fillStyle = '#ff4444';
+        ctx.font = '14px Courier New';
+        ctx.fillText('СПАВН', (CONFIG.GRID.OFFSET_X - 20) / 2, CONFIG.GRID.OFFSET_Y + CONFIG.GRID.ROWS * CONFIG.GRID.CELL_SIZE / 2);
+
+        // Реактор зона
+        const rx = CONFIG.GRID.OFFSET_X + CONFIG.GRID.COLS * CONFIG.GRID.CELL_SIZE + 10;
+        const rw = CONFIG.GRID.OFFSET_X - 20;
+        ctx.fillStyle = 'rgba(0, 255, 150, 0.08)';
+        ctx.fillRect(rx, CONFIG.GRID.OFFSET_Y, rw, CONFIG.GRID.ROWS * CONFIG.GRID.CELL_SIZE);
+        ctx.fillStyle = '#00ff96';
+        ctx.fillText('РЕАКТОР', rx + rw / 2, CONFIG.GRID.OFFSET_Y + CONFIG.GRID.ROWS * CONFIG.GRID.CELL_SIZE / 2);
+
+        // Сетка
+        for (let row = 0; row < CONFIG.GRID.ROWS; row++) {
+            for (let col = 0; col < CONFIG.GRID.COLS; col++) {
+                const x = CONFIG.GRID.OFFSET_X + col * CONFIG.GRID.CELL_SIZE;
+                const y = CONFIG.GRID.OFFSET_Y + row * CONFIG.GRID.CELL_SIZE;
+                ctx.fillStyle = (row + col) % 2 === 0 ? '#2d2d2d' : '#282828';
+                ctx.fillRect(x, y, CONFIG.GRID.CELL_SIZE - 2, CONFIG.GRID.CELL_SIZE - 2);
+            }
+        }
+
+        // Башни
+        for (const tower of this.towers) {
+            ctx.fillStyle = tower.color;
+            ctx.beginPath();
+            ctx.arc(tower.x, tower.y, CONFIG.GRID.CELL_SIZE / 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.font = '28px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(tower.icon, tower.x, tower.y + 2);
+        }
+
+        // Враги
+        for (const enemy of this.enemies) {
+            if (!enemy.isAlive) continue;
+            ctx.globalAlpha = enemy.isDiving ? 0.3 : 1;
+            ctx.fillStyle = enemy.color;
+            ctx.beginPath();
+            ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.font = '20px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(enemy.icon, enemy.x, enemy.y + 2);
+            ctx.globalAlpha = 1;
+
+            const hpW = enemy.radius * 2;
+            const hpX = enemy.x - hpW / 2;
+            const hpY = enemy.y - enemy.radius - 12;
+            ctx.fillStyle = '#333';
+            ctx.fillRect(hpX, hpY, hpW, 5);
+            ctx.fillStyle = enemy.health / enemy.maxHealth > 0.5 ? '#0f0' : enemy.health / enemy.maxHealth > 0.25 ? '#fc0' : '#f00';
+            ctx.fillRect(hpX, hpY, hpW * (enemy.health / enemy.maxHealth), 5);
+        }
+
+        // Снаряды
+        for (const proj of this.projectiles) {
+            ctx.fillStyle = proj.color;
+            ctx.beginPath();
+            ctx.arc(proj.x, proj.y, 5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Эффекты
+        for (const effect of this.effects) {
+            ctx.globalAlpha = effect.alpha;
+            ctx.fillStyle = effect.color;
+            ctx.beginPath();
+            ctx.arc(effect.x, effect.y, effect.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    loop(timestamp) {
+        this.updateEnergy(timestamp);
+        this.updateWaves(timestamp);
+        this.updateEnemies(timestamp);
+        this.updateTowers(timestamp);
+        this.updateProjectiles(timestamp);
+        this.updateEffects();
+        this.draw();
+        this.ui.updateHUD();
+
+        requestAnimationFrame((ts) => this.loop(ts));
+    }
+
+    start() {
+        this.startAct(0);
+        requestAnimationFrame((ts) => this.loop(ts));
     }
 }
+
+// ============ ЗАПУСК ============
+const game = new Game();
+game.start();
