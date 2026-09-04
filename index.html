@@ -5,11 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ferroid Defense</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             background: #0d0d0d;
@@ -44,39 +40,17 @@
             pointer-events: none;
         }
 
-        #energyDisplay {
+        #energyDisplay, #reactorHealth, #waveInfo {
             position: absolute;
             top: 10px;
-            right: 15px;
-            color: #00ff96;
             font-size: 26px;
             font-weight: bold;
-            text-shadow: 0 0 10px #00ff96;
-            pointer-events: none;
+            text-shadow: 0 0 10px currentColor;
         }
 
-        #reactorHealth {
-            position: absolute;
-            top: 10px;
-            left: 15px;
-            color: #ff4444;
-            font-size: 26px;
-            font-weight: bold;
-            text-shadow: 0 0 10px #ff4444;
-            pointer-events: none;
-        }
-
-        #waveInfo {
-            position: absolute;
-            top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            color: #ffcc00;
-            font-size: 22px;
-            font-weight: bold;
-            text-shadow: 0 0 8px #ffcc00;
-            pointer-events: none;
-        }
+        #energyDisplay { right: 15px; color: #00ff96; }
+        #reactorHealth { left: 15px; color: #ff4444; }
+        #waveInfo { left: 50%; transform: translateX(-50%); color: #ffcc00; font-size: 22px; }
 
         #towerPanel {
             position: absolute;
@@ -86,6 +60,7 @@
             display: flex;
             gap: 10px;
             pointer-events: auto;
+            z-index: 100;
         }
 
         .tower-btn {
@@ -100,6 +75,7 @@
             align-items: center;
             justify-content: center;
             transition: all 0.2s;
+            pointer-events: auto;
         }
 
         .tower-btn:hover {
@@ -114,19 +90,9 @@
             box-shadow: 0 0 20px rgba(0, 255, 150, 0.5);
         }
 
-        .tower-btn .icon {
-            font-size: 28px;
-        }
-
-        .tower-btn .cost {
-            font-size: 14px;
-            color: #00ff96;
-        }
-
-        .tower-btn .key {
-            font-size: 11px;
-            color: #888;
-        }
+        .tower-btn .icon { font-size: 28px; pointer-events: none; }
+        .tower-btn .cost { font-size: 14px; color: #00ff96; pointer-events: none; }
+        .tower-btn .key { font-size: 11px; color: #888; pointer-events: none; }
 
         #startWaveBtn {
             position: absolute;
@@ -143,6 +109,7 @@
             pointer-events: auto;
             transition: all 0.2s;
             font-family: 'Courier New', monospace;
+            z-index: 100;
         }
 
         #startWaveBtn:hover {
@@ -153,32 +120,33 @@
         #startWaveBtn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
+            pointer-events: none;
         }
 
-        .dialog-overlay {
+        .overlay {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.85);
+            background: rgba(0, 0, 0, 0.92);
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            pointer-events: auto;
             cursor: pointer;
+            z-index: 1000;
         }
 
-        .dialog-speaker {
+        .overlay .speaker {
             color: #00ff96;
-            font-size: 24px;
+            font-size: 26px;
             font-weight: bold;
             margin-bottom: 20px;
             text-shadow: 0 0 15px #00ff96;
         }
 
-        .dialog-text {
+        .overlay .text {
             color: #fff;
             font-size: 20px;
             max-width: 600px;
@@ -186,39 +154,51 @@
             line-height: 1.5;
         }
 
-        .dialog-hint {
+        .overlay .hint {
             color: #888;
             font-size: 14px;
             margin-top: 30px;
+        }
+
+        .overlay .title {
+            font-size: 40px;
+            color: #ffcc00;
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-shadow: 0 0 20px #ffcc00;
+        }
+
+        .overlay .icon {
+            font-size: 70px;
+            margin-bottom: 15px;
         }
     </style>
 </head>
 <body>
     <div id="gameContainer">
         <canvas id="gameCanvas"></canvas>
-        
         <div id="ui">
             <div id="energyDisplay">⚡ 100</div>
             <div id="reactorHealth">❤️ 100</div>
             <div id="waveInfo">Волна: 0/0</div>
 
             <div id="towerPanel">
-                <div class="tower-btn" data-tower="basic_gun" title="Пушка — 50⚡">
+                <div class="tower-btn" data-tower="basic_gun">
                     <span class="icon">🔫</span>
                     <span class="cost">50⚡</span>
                     <span class="key">[1]</span>
                 </div>
-                <div class="tower-btn" data-tower="slow_pad" title="Подушка — 25⚡">
+                <div class="tower-btn" data-tower="slow_pad">
                     <span class="icon">🧊</span>
                     <span class="cost">25⚡</span>
                     <span class="key">[2]</span>
                 </div>
-                <div class="tower-btn" data-tower="trap" title="Ловушка — 75⚡">
+                <div class="tower-btn" data-tower="trap">
                     <span class="icon">💥</span>
                     <span class="cost">75⚡</span>
                     <span class="key">[3]</span>
                 </div>
-                <div class="tower-btn" data-tower="heavy_cannon" title="Тяжёлая пушка — 150⚡">
+                <div class="tower-btn" data-tower="heavy_cannon">
                     <span class="icon">🚀</span>
                     <span class="cost">150⚡</span>
                     <span class="key">[4]</span>
@@ -229,16 +209,8 @@
         </div>
     </div>
 
-    <!-- Подключение скриптов в правильном порядке -->
-    <script src="js/config.js"></script>
-    <script src="js/grid.js"></script>
-    <script src="js/energy.js"></script>
-    <script src="js/reactor.js"></script>
-    <script src="js/towers.js"></script>
-    <script src="js/enemies.js"></script>
-    <script src="js/waves.js"></script>
-    <script src="js/renderer.js"></script>
-    <script src="js/ui.js"></script>
-    <script src="js/game.js"></script>
+    <script src="config.js"></script>
+    <script src="game.js"></script>
+    <script src="ui.js"></script>
 </body>
 </html>
