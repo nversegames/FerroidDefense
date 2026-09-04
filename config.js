@@ -26,7 +26,7 @@ const CONFIG = {
 
     // ===== ВОЛНЫ =====
     WAVES: {
-        SPAWN_INTERVAL: 2, // секунд между врагами
+        SPAWN_INTERVAL: 2,
     },
 
     // ===== БАШНИ =====
@@ -312,6 +312,45 @@ const CONFIG = {
                 { speaker: 'Рассказчик', text: 'Виктор и Лёха стали героями. Их подвиг не забыт.' },
                 { speaker: 'Рассказчик', text: 'Но это лишь начало. Биомасса всё ещё жива...' },
             ],
+        },
+    ],
+
+    // ===== ДОСТИЖЕНИЯ =====
+    ACHIEVEMENTS: [
+        {
+            id: 'first_blood',
+            name: 'Первая кровь',
+            description: 'Убить первого врага',
+            icon: '🎯',
+            condition: (stats) => stats.kills >= 1,
+        },
+        {
+            id: 'rich',
+            name: 'Богач',
+            description: 'Накопить 500 энергии',
+            icon: '💰',
+            condition: (stats) => stats.maxEnergy >= 500,
+        },
+        {
+            id: 'perfect_act',
+            name: 'Идеальный акт',
+            description: 'Пройти акт без потерь здоровья',
+            icon: '💎',
+            condition: (stats) => stats.perfectActs >= 1,
+        },
+        {
+            id: 'killer',
+            name: 'Машина смерти',
+            description: 'Убить 100 врагов',
+            icon: '⚔️',
+            condition: (stats) => stats.kills >= 100,
+        },
+        {
+            id: 'strategist',
+            name: 'Стратег',
+            description: 'Построить 10 башен за один акт',
+            icon: '🧠',
+            condition: (stats) => stats.towersBuilt >= 10,
         },
     ],
 };
