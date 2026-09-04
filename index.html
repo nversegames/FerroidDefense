@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ferroid Defense</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #1a1a1a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        #gameContainer {
+            position: relative;
+            border: 3px solid #555;
+            border-radius: 8px;
+            box-shadow: 0 0 30px rgba(0, 255, 150, 0.3);
+        }
+
+        canvas {
+            display: block;
+            background: #2a2a2a;
+            cursor: pointer;
+        }
+
+        #ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        #energyDisplay {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            color: #00ff96;
+            font-size: 28px;
+            font-weight: bold;
+            text-shadow: 0 0 10px #00ff96;
+            pointer-events: none;
+        }
+
+        #reactorHealth {
+            position: absolute;
+            top: 10px;
+            left: 15px;
+            color: #ff4444;
+            font-size: 28px;
+            font-weight: bold;
+            text-shadow: 0 0 10px #ff4444;
+            pointer-events: none;
+        }
+
+        #waveInfo {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ffcc00;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 0 8px #ffcc00;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        <div id="ui">
+            <div id="energyDisplay">⚡ 100</div>
+            <div id="reactorHealth">❤️ 100</div>
+            <div id="waveInfo">Волна: 0</div>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
