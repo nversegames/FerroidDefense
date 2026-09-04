@@ -16,11 +16,14 @@ class Game {
         this.energy = new EnergySystem(CONFIG.ENERGY.START_AMOUNT, CONFIG.ENERGY.MAX_AMOUNT);
         this.reactor = new Reactor(CONFIG.REACTOR.MAX_HEALTH);
         this.waveController = new WaveController(this.grid);
+        this.ui = new UIManager(this);
 
         // Состояние игры
         this.state = 'prepare'; // prepare, battle, win, lose, dialogue
         this.currentAct = null;
         this.currentActIndex = 0;
+        this.gameTime = 0;
+        this.lastTimestamp = 0;
 
         // Массивы объектов
         this.enemies = [];
@@ -30,10 +33,13 @@ class Game {
         // Выбранная башня для установки
         this.selectedTower = null;
 
+        // Callback'и реактора
+        this.reactor.onDestroyed = () => this.onReactorDestroyed();
+
         // Настройка обработчиков
         this.setupEventListeners();
 
-        console.log('Ferroid Defense — игра инициализирована');
+        console.log('✅ Ferroid Defense — игра инициализирована');
     }
 
     setupEventListeners() {
@@ -47,7 +53,7 @@ class Game {
             this.handleKeyPress(e);
         });
 
-        // Обновление UI каждую секунду
+        // Обновление UI
         setInterval(() => {
             this.updateUI();
         }, 100);
@@ -64,26 +70,31 @@ class Game {
         if (cell && this.selectedTower) {
             // Пытаемся установить башню
             this.tryPlaceTower(cell.row, cell.col);
-        } else if (cell && this.grid.getCell(cell.row, cell.col).tower) {
-            // Показываем информацию о башне
-            const tower = this.grid.getCell(cell.row, cell.col).tower;
-            console.log(`Башня: ${tower.name} | Урон: ${tower.damage} | Перезарядка: ${tower.cooldown}с`);
+        } else if (cell) {
+            const cellData = this.grid.getCell(cell.row, cell.col);
+            if (cellData.tower) {
+                // Показываем информацию о башне
+                const tower = cellData.tower;
+                console.log(`Башня: ${tower.name} | Урон: ${tower.damage} | Перезарядка: ${tower.cooldown}с`);
+            } else {
+                console.log(`Клетка [${cell.row}, ${cell.col}] свободна`);
+            }
         }
     }
 
     handleKeyPress(e) {
         switch(e.key.toLowerCase()) {
             case '1':
-                this.selectTower('basic_gun');
+                this.selectTowerById('basic_gun');
                 break;
             case '2':
-                this.selectTower('slow_pad');
+                this.selectTowerById('slow_pad');
                 break;
             case '3':
-                this.selectTower('trap');
+                this.selectTowerById('trap');
                 break;
             case '4':
-                this.selectTower('heavy_cannon');
+                this.selectTowerById('heavy_cannon');
                 break;
             case 'r':
                 if (this.state === 'lose') {
@@ -95,14 +106,34 @@ class Game {
                     this.startWave();
                 }
                 break;
+            case 'escape':
+                this.deselectTower();
+                break;
         }
     }
 
-    selectTower(towerId) {
-        if (CONFIG.TOWERS[towerId.toUpperCase()]) {
-            this.selectedTower = CONFIG.TOWERS[towerId.toUpperCase()];
-            console.log(`Выбрана башня: ${this.selectedTower.name} (стоимость: ${this.selectedTower.cost})`);
+    selectTowerById(towerId) {
+        const towerConfig = CONFIG.TOWERS[towerId.toUpperCase()];
+        if (towerConfig) {
+            this.selectedTower = towerConfig;
+            
+            // Обновляем визуал кнопок
+            const btn = document.querySelector(`[data-tower="${towerId}"]`);
+            if (btn) {
+                this.ui.selectTower(towerId, btn);
+            }
+            
+            console.log(`Выбрана башня: ${this.selectedTower.name} (${this.selectedTower.cost}⚡)`);
         }
+    }
+
+    deselectTower() {
+        this.selectedTower = null;
+        if (this.ui.selectedTowerBtn) {
+            this.ui.selectedTowerBtn.classList.remove('selected');
+            this.ui.selectedTowerBtn = null;
+        }
+        console.log('Башня не выбрана');
     }
 
     tryPlaceTower(row, col) {
@@ -121,41 +152,44 @@ class Game {
             return;
         }
 
-        // Создаём башню
-        const tower = new Tower(
-            this.selectedTower.id,
-            this.selectedTower.name,
-            this.selectedTower.icon,
-            this.selectedTower.cost,
-            this.selectedTower.damage || 0,
-            this.selectedTower.range || 0,
-            this.selectedTower.cooldown || 1,
-            this.selectedTower.color,
-            this.selectedTower.projectileSpeed || 0
-        );
+        // Создаём башню (или ловушку)
+        let tower;
+        if (this.selectedTower.id === 'trap') {
+            tower = new Trap(this.selectedTower.cost, this.selectedTower.damage);
+        } else {
+            tower = new Tower(
+                this.selectedTower.id,
+                this.selectedTower.name,
+                this.selectedTower.icon,
+                this.selectedTower.cost,
+                this.selectedTower.damage || 0,
+                this.selectedTower.range || 0,
+                this.selectedTower.cooldown || 1,
+                this.selectedTower.color,
+                this.selectedTower.projectileSpeed || 300
+            );
+        }
 
         // Устанавливаем на сетку
         if (this.grid.placeTower(row, col, tower)) {
             this.energy.spend(this.selectedTower.cost);
-            console.log(`Башня ${tower.name} установлена на [${row}, ${col}]`);
+            console.log(`✅ Башня ${tower.name} установлена на [${row}, ${col}]`);
         }
     }
 
     startWave() {
         if (this.state !== 'prepare') return;
-
-        if (!this.currentAct) {
-            this.loadAct(0);
-        }
+        if (this.waveController.allWavesCompleted) return;
 
         this.state = 'battle';
         this.waveController.startNextWave();
-        console.log('Волна началась!');
+        this.updateUI();
+        console.log('⚔️ Волна началась!');
     }
 
     loadAct(actIndex) {
         if (actIndex >= CONFIG.ACTS.length) {
-            console.log('Все акты пройдены!');
+            console.log('🎉 Все акты пройдены! Игра завершена!');
             this.state = 'win';
             return;
         }
@@ -163,17 +197,42 @@ class Game {
         this.currentAct = CONFIG.ACTS[actIndex];
         this.currentActIndex = actIndex;
         this.waveController.loadAct(this.currentAct);
-        console.log(`Акт ${this.currentAct.id}: ${this.currentAct.title}`);
+        this.state = 'prepare';
+        
+        console.log(`\n=== АКТ ${this.currentAct.id}: ${this.currentAct.title} ===`);
         console.log(this.currentAct.description);
+        
+        // Показываем диалог акта
+        this.ui.showActDialogue(this.currentAct);
+    }
+
+    loadNextAct() {
+        this.currentActIndex++;
+        this.loadAct(this.currentActIndex);
+    }
+
+    onReactorDestroyed() {
+        this.state = 'lose';
+        this.updateUI();
+        console.log('💀 ИГРА ОКОНЧЕНА!');
     }
 
     updateUI() {
         document.getElementById('energyDisplay').textContent = `⚡ ${Math.floor(this.energy.current)}`;
         document.getElementById('reactorHealth').textContent = `❤️ ${this.reactor.currentHealth}`;
         document.getElementById('waveInfo').textContent = `Волна: ${this.waveController.currentWaveIndex + 1}/${this.waveController.totalWaves}`;
+        this.ui.updateStartWaveButton();
     }
 
     gameLoop(timestamp) {
+        // Вычисляем delta time
+        if (this.lastTimestamp === 0) {
+            this.lastTimestamp = timestamp;
+        }
+        const deltaTime = timestamp - this.lastTimestamp;
+        this.lastTimestamp = timestamp;
+        this.gameTime += deltaTime;
+
         // Обновление логики
         this.update(timestamp);
 
@@ -191,6 +250,20 @@ class Game {
         // Обновляем волны
         if (this.state === 'battle') {
             this.waveController.update(timestamp, this);
+
+            // Проверяем, завершена ли волна
+            if (this.waveController.isWaveComplete(this)) {
+                if (this.waveController.isActComplete(this)) {
+                    // Акт пройден!
+                    this.onActCompleted();
+                } else {
+                    // Переходим к следующей волне
+                    this.waveController.advanceToNextWave();
+                    this.state = 'prepare';
+                    this.updateUI();
+                    console.log('✅ Волна отбита! Подготовьтесь к следующей.');
+                }
+            }
         }
 
         // Обновляем врагов
@@ -222,10 +295,21 @@ class Game {
 
         // Убираем отработанные эффекты
         this.effects = this.effects.filter(e => e.isAlive);
+
+        // Обновляем UI
+        this.updateUI();
+    }
+
+    onActCompleted() {
+        this.state = 'prepare';
+        this.updateUI();
+        console.log(`\n🏆 АКТ ${this.currentAct.id} ПРОЙДЕН!`);
+        
+        // Показываем экран победы
+        this.ui.showWinScreen(this.currentAct.id);
     }
 
     restartGame() {
-        // Полная перезагрузка
         location.reload();
     }
 
