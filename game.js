@@ -6,45 +6,65 @@ class Game {
     constructor() {
         this.canvas = document.getElementById('gameCanvas');
         this.ctx = this.canvas.getContext('2d');
-        this.canvas.width = CONFIG.GRID.OFFSET_X * 2 + CONFIG.GRID.COLS * CONFIG.GRID.CELL_SIZE;
-        this.canvas.height = CONFIG.GRID.OFFSET_Y * 2 + CONFIG.GRID.ROWS * CONFIG.GRID.CELL_SIZE;
+        this.canvas.width = 1200;
+        this.canvas.height = 700;
 
-        this.state = 'menu'; // menu | prepare | battle | dialogue | win | lose
+        this.state = 'menu'; // menu | prepare | battle | dialogue | win | lose | shop | research | capture
         this.energy = CONFIG.ENERGY.START;
         this.reactorHealth = CONFIG.REACTOR.MAX_HEALTH;
+        this.money = CONFIG.MONEY.START;
         this.currentActIndex = 0;
         this.currentWaveIndex = 0;
-        this.selectedTowerType = null;
+        this.selectedBallType = null;
+        this.selectedModuleType = null;
         this.lastRegenTime = 0;
         this.lastSpawnTime = 0;
         this.spawnQueue = [];
         this.isSpawning = false;
         this.allWavesDone = false;
+        this.lastBallThrowTime = 0;
+        this.ballCooldown = 0.5; // Базовая перезарядка в секундах
+        this.chargedBallPower = 1;
+        this.isCharging = false;
+        this.chargeStartTime = 0;
+        this.mouseX = 0;
+        this.mouseY = 0;
+        this.comboBalls = []; // Для комбинирования шаров
 
         this.towers = [];
         this.enemies = [];
         this.projectiles = [];
         this.effects = [];
+        this.particles = [];
+        this.capturedEnemies = [];
+        this.researchingEnemies = [];
 
         // Прогресс и статистика
         this.progress = this.loadProgress();
         this.stats = this.loadStats();
         this.achievements = this.loadAchievements();
+        this.upgrades = this.loadUpgrades();
+        this.research = this.loadResearch();
+
+        // Применяем улучшения
+        this.applyUpgrades();
+        this.applyResearch();
 
         this.ui = new UI(this);
         this.setupEvents();
+        this.setupTooltips();
 
         console.log('✅ Ferroid Defense запущен');
         this.showMainMenu();
     }
 
-    // ============ ПРОГРЕСС ============
+    // ============ ЗАГРУЗКА/СОХРАНЕНИЕ ============
     loadProgress() {
         const saved = localStorage.getItem('ferroid_progress');
         return saved ? JSON.parse(saved) : {
-            unlockedActs: [0], // Индексы разблокированных актов
-            completedActs: [], // Индексы пройденных актов
-            stars: {}, // { actIndex: starsCount }
+            unlockedActs: [0],
+            completedActs: [],
+            stars: {},
         };
     }
 
@@ -52,10 +72,13 @@ class Game {
         const saved = localStorage.getItem('ferroid_stats');
         return saved ? JSON.parse(saved) : {
             kills: 0,
-            towersBuilt: 0,
+            modulesBuilt: 0,
             maxEnergy: 0,
             perfectActs: 0,
             totalWavesCompleted: 0,
+            captured: 0,
+            researched: 0,
+            totalMoney: 0,
         };
     }
 
@@ -64,10 +87,78 @@ class Game {
         return saved ? JSON.parse(saved) : [];
     }
 
+    loadUpgrades() {
+        const saved = localStorage.getItem('ferroid_upgrades');
+        return saved ? JSON.parse(saved) : [];
+    }
+
+    loadResearch() {
+        const saved = localStorage.getItem('ferroid_research');
+        return saved ? JSON.parse(saved) : [];
+    }
+
     saveProgress() {
         localStorage.setItem('ferroid_progress', JSON.stringify(this.progress));
         localStorage.setItem('ferroid_stats', JSON.stringify(this.stats));
         localStorage.setItem('ferroid_achievements', JSON.stringify(this.achievements));
+        localStorage.setItem('ferroid_upgrades', JSON.stringify(this.upgrades));
+        localStorage.setItem('ferroid_research', JSON.stringify(this.research));
+    }
+
+    applyUpgrades() {
+        this.ballDamageMultiplier = 1;
+        this.reloadSpeedMultiplier = 1;
+        this.energyRegenMultiplier = 1;
+        this.reactorHealthBonus = 0;
+        this.moneyMultiplier = 1;
+
+        for (const upgradeId of this.upgrades) {
+            const upgrade = CONFIG.UPGRADES.find(u => u.id === upgradeId);
+            if (upgrade && upgrade.effect) {
+                if (upgrade.effect.ballDamageMultiplier) {
+                    this.ballDamageMultiplier = upgrade.effect.ballDamageMultiplier;
+                }
+                if (upgrade.effect.reloadSpeedMultiplier) {
+                    this.reloadSpeedMultiplier = upgrade.effect.reloadSpeedMultiplier;
+                }
+                if (upgrade.effect.energyRegenMultiplier) {
+                    this.energyRegenMultiplier = upgrade.effect.energyRegenMultiplier;
+                }
+                if (upgrade.effect.reactorHealthBonus) {
+                    this.reactorHealthBonus = Math.max(this.reactorHealthBonus, upgrade.effect.reactorHealthBonus);
+                }
+                if (upgrade.effect.moneyMultiplier) {
+                    this.moneyMultiplier = upgrade.effect.moneyMultiplier;
+                }
+            }
+        }
+
+        this.reactorHealth = CONFIG.REACTOR.MAX_HEALTH + this.reactorHealthBonus;
+    }
+
+    applyResearch() {
+        this.researchEffects = {
+            fireDamageBonus: 0,
+            iceSlowBonus: 0,
+            electricChainBonus: 0,
+            explosiveRadiusBonus: 0,
+            acidArmorPierce: 0,
+            moduleCostReduction: 0,
+            energyRegenBonus: 0,
+            reactorHealthBonus: 0,
+        };
+
+        for (const researchId of this.research) {
+            const item = CONFIG.RESEARCH.find(r => r.id === researchId);
+            if (item && item.effect) {
+                Object.assign(this.researchEffects, item.effect);
+            }
+        }
+
+        // Применяем бонусы к реактору
+        if (this.researchEffects.reactorHealthBonus > 0) {
+            this.reactorHealth = CONFIG.REACTOR.MAX_HEALTH + this.reactorHealthBonus + this.researchEffects.reactorHealthBonus;
+        }
     }
 
     unlockNextAct() {
@@ -83,10 +174,14 @@ class Game {
             this.progress.completedActs.push(this.currentActIndex);
             this.progress.stars[this.currentActIndex] = stars;
             
-            // Проверка на идеальное прохождение
-            if (this.reactorHealth === CONFIG.REACTOR.MAX_HEALTH) {
+            if (this.reactorHealth === CONFIG.REACTOR.MAX_HEALTH + this.reactorHealthBonus) {
                 this.stats.perfectActs++;
             }
+            
+            // Бонус за прохождение
+            const bonus = 100 + this.currentActIndex * 50;
+            this.money += bonus;
+            this.stats.totalMoney += bonus;
             
             this.unlockNextAct();
             this.saveProgress();
@@ -115,10 +210,82 @@ class Game {
         }
     }
 
+    showShop() {
+        if (this.state === 'prepare' || this.state === 'menu') {
+            this.state = 'shop';
+            this.ui.showShop();
+        }
+    }
+
+    showResearch() {
+        if (this.state === 'prepare' || this.state === 'menu') {
+            this.state = 'research';
+            this.ui.showResearch();
+        }
+    }
+
+    showCapture() {
+        if (this.state === 'prepare' || this.state === 'menu') {
+            this.state = 'capture';
+            this.ui.showCapture();
+        }
+    }
+
+    buyUpgrade(upgradeId) {
+        const upgrade = CONFIG.UPGRADES.find(u => u.id === upgradeId);
+        if (!upgrade || this.upgrades.includes(upgradeId)) return;
+        
+        if (this.money >= upgrade.cost) {
+            this.money -= upgrade.cost;
+            this.upgrades.push(upgradeId);
+            this.applyUpgrades();
+            this.saveProgress();
+            this.ui.showShop();
+        }
+    }
+
+    buyResearch(researchId) {
+        const item = CONFIG.RESEARCH.find(r => r.id === researchId);
+        if (!item || this.research.includes(researchId)) return;
+        
+        if (this.stats.researched >= item.cost) {
+            this.stats.researched -= item.cost;
+            this.research.push(researchId);
+            this.applyResearch();
+            this.saveProgress();
+            this.ui.showResearch();
+        }
+    }
+
     // ============ СОБЫТИЯ ============
     setupEvents() {
         this.canvas.addEventListener('click', (e) => this.onCanvasClick(e));
+        this.canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
+        this.canvas.addEventListener('mouseup', (e) => this.onMouseUp(e));
+        this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
         window.addEventListener('keydown', (e) => this.onKeyDown(e));
+    }
+
+    setupTooltips() {
+        // Настройка подсказок
+        document.querySelectorAll('[title]').forEach(el => {
+            el.addEventListener('mouseenter', (e) => {
+                const tooltip = document.createElement('div');
+                tooltip.className = 'tooltip';
+                tooltip.textContent = el.title;
+                tooltip.style.left = e.clientX + 10 + 'px';
+                tooltip.style.top = e.clientY + 10 + 'px';
+                document.body.appendChild(tooltip);
+                el._tooltip = tooltip;
+            });
+            
+            el.addEventListener('mouseleave', () => {
+                if (el._tooltip) {
+                    el._tooltip.remove();
+                    el._tooltip = null;
+                }
+            });
+        });
     }
 
     onCanvasClick(e) {
@@ -127,8 +294,49 @@ class Game {
         const y = e.clientY - rect.top;
         const cell = this.pixelToCell(x, y);
 
-        if (cell && this.selectedTowerType && this.state === 'prepare') {
-            this.placeTower(cell.row, cell.col);
+        if (this.state === 'battle' && this.selectedBallType) {
+            this.throwBall(x, y);
+        } else if (cell && this.selectedModuleType && this.state === 'prepare') {
+            this.placeModule(cell.row, cell.col);
+        }
+    }
+
+    onMouseDown(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        this.mouseX = e.clientX - rect.left;
+        this.mouseY = e.clientY - rect.top;
+        
+        if (this.state === 'battle' && this.selectedBallType) {
+            this.isCharging = true;
+            this.chargeStartTime = Date.now();
+            this.chargedBallPower = 1;
+        }
+    }
+
+    onMouseUp(e) {
+        if (this.isCharging) {
+            const chargeTime = (Date.now() - this.chargeStartTime) / 1000;
+            this.chargedBallPower = Math.min(1 + chargeTime * 2, 3); // Максимум x3 урона
+            this.isCharging = false;
+            
+            const rect = this.canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            if (this.state === 'battle' && this.selectedBallType) {
+                this.throwBall(x, y, this.chargedBallPower);
+            }
+        }
+    }
+
+    onMouseMove(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        this.mouseX = e.clientX - rect.left;
+        this.mouseY = e.clientY - rect.top;
+        
+        // Обновляем прицел
+        if (this.state === 'battle' && this.selectedBallType) {
+            this.drawAim = true;
         }
     }
 
@@ -140,11 +348,12 @@ class Game {
             return;
         }
 
-        const tower = CONFIG.TOWERS.find(t => t.key === e.key);
-        if (tower) {
-            this.selectedTowerType = tower;
-            this.ui.updateTowerButtons();
+        const ball = CONFIG.BALLS.find(b => b.key === e.key);
+        if (ball) {
+            this.selectedBallType = ball;
+            this.ui.updateBallButtons();
         }
+        
         if (e.key === ' ') {
             e.preventDefault();
             this.startWave();
@@ -153,11 +362,19 @@ class Game {
             location.reload();
         }
         if (e.key === 'Escape') {
-            this.selectedTowerType = null;
-            this.ui.updateTowerButtons();
+            this.selectedBallType = null;
+            this.selectedModuleType = null;
+            this.ui.updateBallButtons();
+            this.ui.updateModuleButtons();
         }
         if (e.key === 'm' && this.state !== 'battle') {
             this.showMainMenu();
+        }
+        if (e.key === 's' && (this.state === 'prepare' || this.state === 'menu')) {
+            this.showShop();
+        }
+        if (e.key === 't' && (this.state === 'prepare' || this.state === 'menu')) {
+            this.showResearch();
         }
     }
 
@@ -186,17 +403,19 @@ class Game {
         return CONFIG.GRID.OFFSET_X + CONFIG.GRID.COLS * CONFIG.GRID.CELL_SIZE + CONFIG.GRID.OFFSET_X - 30;
     }
 
-    placeTower(row, col) {
-        const towerType = this.selectedTowerType;
-        if (!towerType) return;
-        if (this.energy < towerType.cost) return;
+    placeModule(row, col) {
+        const moduleType = this.selectedModuleType;
+        if (!moduleType) return;
+        
+        const actualCost = Math.round(moduleType.cost * (1 - this.researchEffects.moduleCostReduction / 100));
+        if (this.energy < actualCost) return;
         if (this.towers.some(t => t.row === row && t.col === col)) return;
 
-        this.energy -= towerType.cost;
-        this.stats.towersBuilt++;
+        this.energy -= actualCost;
+        this.stats.modulesBuilt++;
 
         this.towers.push({
-            ...towerType,
+            ...moduleType,
             row,
             col,
             x: this.cellCenter(row, col).x,
@@ -206,6 +425,85 @@ class Game {
         });
 
         this.checkAchievements();
+    }
+
+    throwBall(targetX, targetY, power = 1) {
+        if (this.state !== 'battle' || !this.selectedBallType) return;
+        if (Date.now() - this.lastBallThrowTime < this.ballCooldown / this.reloadSpeedMultiplier * 1000) return;
+        
+        const ball = this.selectedBallType;
+        const cost = Math.round(ball.cost * power);
+        if (this.energy < cost) return;
+        
+        this.energy -= cost;
+        this.lastBallThrowTime = Date.now();
+        
+        // Создаем снаряд
+        const projectile = {
+            x: this.mouseX,
+            y: this.mouseY,
+            targetX,
+            targetY,
+            damage: Math.round(ball.damage * this.ballDamageMultiplier * power),
+            speed: ball.speed,
+            color: ball.color,
+            radius: ball.radius,
+            ballType: ball,
+            power,
+            isAlive: true,
+            trail: [],
+        };
+        
+        this.projectiles.push(projectile);
+        
+        // Эффект запуска
+        this.spawnEffect(this.mouseX, this.mouseY, ball.color, 20);
+    }
+
+    spawnEnemy(typeId, lane) {
+        let type = CONFIG.ENEMIES[typeId];
+        if (!type) return;
+        
+        // Применяем бонусы исследования к врагам
+        const researchMultiplier = this.getEnemyResearchMultiplier(typeId);
+        
+        const enemy = {
+            ...type,
+            lane,
+            x: -30,
+            y: this.laneY(lane),
+            maxHealth: Math.round(type.health * researchMultiplier),
+            health: Math.round(type.health * researchMultiplier),
+            isAlive: true,
+            isDiving: false,
+            state: 'moving',
+            slowPercent: 0,
+            slowTimer: 0,
+            lastAttackTime: 0,
+            radius: 22,
+            burnTimer: 0,
+            burnDamage: 0,
+            corrodeTimer: 0,
+            corrodeDamage: 0,
+        };
+        
+        this.enemies.push(enemy);
+    }
+
+    getEnemyResearchMultiplier(enemyType) {
+        // Если враг изучен, он слабее
+        if (this.research.includes(`enemy_${enemyType}`)) {
+            return 0.7; // -30% здоровья
+        }
+        return 1;
+    }
+
+    getEnemyDamageMultiplier(enemyType) {
+        // Если враг изучен, наносим больше урона
+        if (this.research.includes(`enemy_${enemyType}`)) {
+            return CONFIG.ENEMIES[enemyType].researchBonus.damageMultiplier || 1.5;
+        }
+        return 1;
     }
 
     updateTowers(timestamp) {
@@ -224,69 +522,42 @@ class Game {
                 continue;
             }
 
-            if (tower.id === 'slow_pad') {
+            if (tower.id === 'pad') {
                 for (const enemy of this.enemies) {
                     if (enemy.isAlive && enemy.lane === tower.row) {
                         enemy.slowTimer = tower.slowDuration;
-                        enemy.slowPercent = tower.slowPercent;
+                        enemy.slowPercent = tower.slowPercent + this.researchEffects.iceSlowBonus / 100;
                     }
                 }
                 continue;
             }
 
-            if (timestamp - tower.lastAttackTime < tower.cooldown * 1000) continue;
+            if (tower.id === 'generator') {
+                this.energy = Math.min(this.energy + tower.energyPerSecond * (this.energyRegenMultiplier + this.researchEffects.energyRegenBonus / CONFIG.ENERGY.REGEN_PER_SECOND), CONFIG.ENERGY.MAX);
+                continue;
+            }
 
-            const target = this.findTarget(tower);
-            if (target) {
-                tower.lastAttackTime = timestamp;
-                this.projectiles.push({
-                    x: tower.x,
-                    y: tower.y,
-                    target,
-                    damage: tower.damage,
-                    speed: tower.projectileSpeed,
-                    color: tower.color,
-                    isAlive: true,
-                });
+            if (tower.id === 'magnet') {
+                for (const enemy of this.enemies) {
+                    if (enemy.isAlive && Math.abs(enemy.x - tower.x) < tower.attractRadius) {
+                        enemy.x += (tower.x - enemy.x) * 0.01 * tower.attractForce / 100;
+                    }
+                }
+                continue;
+            }
+
+            if (tower.id === 'amplifier') {
+                // Усилитель увеличивает урон шаров рядом
+                for (const proj of this.projectiles) {
+                    if (proj.isAlive && Math.abs(proj.x - tower.x) < tower.radius) {
+                        proj.damage = Math.round(proj.damage * tower.damageMultiplier);
+                    }
+                }
+                continue;
             }
         }
 
         this.towers = this.towers.filter(t => !t.triggered);
-    }
-
-    findTarget(tower) {
-        let closest = null;
-        let closestDist = Infinity;
-        for (const enemy of this.enemies) {
-            if (!enemy.isAlive || enemy.lane !== tower.row || enemy.isDiving) continue;
-            const dist = enemy.x - tower.x;
-            if (dist > 0 && dist < tower.range && dist < closestDist) {
-                closest = enemy;
-                closestDist = dist;
-            }
-        }
-        return closest;
-    }
-
-    spawnEnemy(typeId, lane) {
-        const type = CONFIG.ENEMIES[typeId];
-        if (!type) return;
-
-        this.enemies.push({
-            ...type,
-            lane,
-            x: -30,
-            y: this.laneY(lane),
-            maxHealth: type.health,
-            health: type.health,
-            isAlive: true,
-            isDiving: false,
-            state: 'moving',
-            slowPercent: 0,
-            slowTimer: 0,
-            lastAttackTime: 0,
-            radius: 22,
-        });
     }
 
     updateEnemies(timestamp) {
@@ -295,6 +566,26 @@ class Game {
 
         for (const enemy of this.enemies) {
             if (!enemy.isAlive) continue;
+
+            // Обработка горения
+            if (enemy.burnTimer > 0) {
+                enemy.burnTimer -= dt;
+                enemy.health -= enemy.burnDamage * dt;
+                if (enemy.health <= 0) {
+                    this.killEnemy(enemy);
+                    continue;
+                }
+            }
+
+            // Обработка коррозии
+            if (enemy.corrodeTimer > 0) {
+                enemy.corrodeTimer -= dt;
+                enemy.health -= enemy.corrodeDamage * dt;
+                if (enemy.health <= 0) {
+                    this.killEnemy(enemy);
+                    continue;
+                }
+            }
 
             if (enemy.slowTimer > 0) {
                 enemy.slowTimer -= dt;
@@ -343,23 +634,74 @@ class Game {
         this.enemies = this.enemies.filter(e => e.isAlive);
     }
 
-    damageEnemy(enemy, damage) {
+    damageEnemy(enemy, damage, ballType = null) {
         if (!enemy.isAlive || enemy.isDiving) return;
 
+        // Применяем бонус исследования
+        damage = Math.round(damage * this.getEnemyDamageMultiplier(enemy.id));
+
+        // Проверяем броню
         if (enemy.armor > 0) {
-            if (damage < 50) return;
+            if (damage < 50 && !ballType?.effects?.includes('corrode')) {
+                return; // Слабый удар не пробивает броню
+            }
             enemy.armor--;
         }
 
         enemy.health -= damage;
+
+        // Применяем эффекты
+        if (ballType?.effects?.includes('burn')) {
+            enemy.burnTimer = 3;
+            enemy.burnDamage = 5 + this.researchEffects.fireDamageBonus / 10;
+        }
+        
+        if (ballType?.effects?.includes('slow')) {
+            enemy.slowTimer = 3;
+            enemy.slowPercent = Math.min(0.8, 0.4 + this.researchEffects.iceSlowBonus / 100);
+        }
+        
+        if (ballType?.effects?.includes('corrode')) {
+            enemy.corrodeTimer = 2;
+            enemy.corrodeDamage = 10;
+            if (enemy.armor > 0) enemy.armor = 0; // Кислота разрушает броню
+        }
+
+        if (ballType?.effects?.includes('capture') && enemy.health <= enemy.maxHealth * 0.3) {
+            this.captureEnemy(enemy);
+            return;
+        }
 
         if (enemy.health <= 0) {
             this.killEnemy(enemy);
         }
     }
 
+    captureEnemy(enemy) {
+        if (this.capturedEnemies.length >= 5) {
+            this.spawnEffect(enemy.x, enemy.y, '#ffffff', 30);
+            this.ui.showNotification('Комната плена заполнена!', '⚠️');
+            return;
+        }
+        
+        enemy.isAlive = false;
+        this.stats.captured++;
+        this.capturedEnemies.push({
+            ...enemy,
+            isBeingResearched: false,
+            researchProgress: 0,
+        });
+        
+        this.spawnEffect(enemy.x, enemy.y, '#00ff00', 40);
+        this.ui.showNotification(`${enemy.name} захвачен!`, '🕸️');
+        this.checkAchievements();
+    }
+
     killEnemy(enemy) {
         enemy.isAlive = false;
+        const reward = Math.round(enemy.reward * this.moneyMultiplier);
+        this.money += reward;
+        this.stats.totalMoney += reward;
         this.energy = Math.min(this.energy + enemy.reward, CONFIG.ENERGY.MAX);
         this.stats.kills++;
         this.stats.maxEnergy = Math.max(this.stats.maxEnergy, this.energy);
@@ -386,6 +728,7 @@ class Game {
                     slowTimer: 0,
                     lastAttackTime: 0,
                     radius: 14,
+                    armor: 0,
                 });
             }
         }
@@ -415,26 +758,58 @@ class Game {
         this._lastProjUpdate = timestamp;
 
         for (const proj of this.projectiles) {
-            if (!proj.target.isAlive) {
-                proj.isAlive = false;
-                continue;
-            }
+            if (!proj.isAlive) continue;
 
-            const dx = proj.target.x - proj.x;
-            const dy = proj.target.y - proj.y;
+            const dx = proj.targetX - proj.x;
+            const dy = proj.targetY - proj.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
 
-            if (dist < 12) {
-                this.damageEnemy(proj.target, proj.damage);
+            // Сохраняем след
+            proj.trail.push({ x: proj.x, y: proj.y });
+            if (proj.trail.length > 10) proj.trail.shift();
+
+            if (dist < 20) {
+                this.onProjectileHit(proj);
                 proj.isAlive = false;
             } else {
                 const move = proj.speed * dt * 60 / dist;
                 proj.x += dx * move;
                 proj.y += dy * move;
+
+                // Проверка столкновения с врагами
+                for (const enemy of this.enemies) {
+                    if (!enemy.isAlive) continue;
+                    const enemyDist = Math.sqrt((enemy.x - proj.x) ** 2 + (enemy.y - proj.y) ** 2);
+                    if (enemyDist < enemy.radius + proj.radius) {
+                        this.onProjectileHit(proj, enemy);
+                        proj.isAlive = false;
+                        break;
+                    }
+                }
             }
         }
 
         this.projectiles = this.projectiles.filter(p => p.isAlive);
+    }
+
+    onProjectileHit(proj, enemy = null) {
+        const ballType = proj.ballType;
+        
+        if (ballType.effects.includes('explosion') || ballType.effects.includes('ice_explosion')) {
+            // Взрыв наносит урон по области
+            const radius = proj.radius * (1 + this.researchEffects.explosiveRadiusBonus / 100) * 3;
+            for (const e of this.enemies) {
+                if (!e.isAlive) continue;
+                const dist = Math.sqrt((e.x - proj.x) ** 2 + (e.y - proj.y) ** 2);
+                if (dist < radius) {
+                    this.damageEnemy(e, Math.round(proj.damage * 0.5), ballType);
+                }
+            }
+            this.spawnEffect(proj.x, proj.y, proj.color, radius);
+        } else if (enemy) {
+            this.damageEnemy(enemy, proj.damage, ballType);
+            this.spawnEffect(proj.x, proj.y, proj.color, 15);
+        }
     }
 
     spawnEffect(x, y, color, radius) {
@@ -463,11 +838,13 @@ class Game {
         this.state = 'battle';
         this.spawnQueue = [];
 
-        for (let i = 0; i < wave.count; i++) {
-            const lane = wave.lane === -1
-                ? Math.floor(Math.random() * CONFIG.GRID.ROWS)
-                : wave.lane;
-            this.spawnQueue.push({ enemy: wave.enemy, lane });
+        for (const group of wave.enemies) {
+            for (let i = 0; i < group.count; i++) {
+                const lane = group.lane === -1
+                    ? Math.floor(Math.random() * CONFIG.GRID.ROWS)
+                    : group.lane;
+                this.spawnQueue.push({ enemy: group.type, lane });
+            }
         }
 
         this.isSpawning = true;
@@ -495,21 +872,21 @@ class Game {
                 this.allWavesDone = true;
                 this.state = 'prepare';
                 
-                // Рассчитываем звёзды
                 const stars = this.calculateStars();
                 this.completeAct(stars);
                 
                 this.ui.showWinScreen(this.currentAct().title, stars, () => {
-                    this.ui.showMainMenu();
+                    this.showShop();
                 });
             } else {
                 this.state = 'prepare';
+                this.ui.showNotification(`Волна ${this.currentWaveIndex} пройдена!`, '✅');
             }
         }
     }
 
     calculateStars() {
-        const healthPercent = this.reactorHealth / CONFIG.REACTOR.MAX_HEALTH;
+        const healthPercent = this.reactorHealth / (CONFIG.REACTOR.MAX_HEALTH + this.reactorHealthBonus);
         if (healthPercent === 1) return 3;
         if (healthPercent >= 0.5) return 2;
         return 1;
@@ -524,7 +901,7 @@ class Game {
         this.effects = [];
         this.towers = [];
         this.energy = CONFIG.ENERGY.START;
-        this.reactorHealth = CONFIG.REACTOR.MAX_HEALTH;
+        this.reactorHealth = CONFIG.REACTOR.MAX_HEALTH + this.reactorHealthBonus;
         this.state = 'prepare';
         
         this.ui.hideMainMenu();
@@ -538,7 +915,8 @@ class Game {
         if (this.state === 'battle' || this.state === 'prepare') {
             if (timestamp - this.lastRegenTime >= 1000) {
                 this.lastRegenTime = timestamp;
-                this.energy = Math.min(this.energy + CONFIG.ENERGY.REGEN_PER_SECOND, CONFIG.ENERGY.MAX);
+                const regenAmount = CONFIG.ENERGY.REGEN_PER_SECOND * this.energyRegenMultiplier + this.researchEffects.energyRegenBonus;
+                this.energy = Math.min(this.energy + regenAmount, CONFIG.ENERGY.MAX);
                 this.stats.maxEnergy = Math.max(this.stats.maxEnergy, this.energy);
             }
         }
@@ -547,10 +925,11 @@ class Game {
     onLose() {
         this.state = 'lose';
         this.ui.showLoseScreen(() => {
-            this.ui.showMainMenu();
+            this.showMainMenu();
         });
     }
 
+    // ============ ОТРИСОВКА ============
     draw() {
         const ctx = this.ctx;
         const W = this.canvas.width;
@@ -589,11 +968,11 @@ class Game {
             }
         }
 
-        // Башни
-        for (const tower of this.towers) {
-            ctx.fillStyle = tower.color;
+        // Модули
+        for (const module of this.towers) {
+            ctx.fillStyle = module.color;
             ctx.beginPath();
-            ctx.arc(tower.x, tower.y, CONFIG.GRID.CELL_SIZE / 3, 0, Math.PI * 2);
+            ctx.arc(module.x, module.y, CONFIG.GRID.CELL_SIZE / 3, 0, Math.PI * 2);
             ctx.fill();
             ctx.strokeStyle = '#fff';
             ctx.lineWidth = 2;
@@ -601,7 +980,7 @@ class Game {
             ctx.font = '28px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(tower.icon, tower.x, tower.y + 2);
+            ctx.fillText(module.icon, module.x, module.y + 2);
         }
 
         // Враги
@@ -621,6 +1000,24 @@ class Game {
             ctx.fillText(enemy.icon, enemy.x, enemy.y + 2);
             ctx.globalAlpha = 1;
 
+            // Эффект горения
+            if (enemy.burnTimer > 0) {
+                ctx.fillStyle = 'rgba(255, 100, 0, 0.5)';
+                ctx.beginPath();
+                ctx.arc(enemy.x, enemy.y, enemy.radius * 0.8, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Эффект замедления
+            if (enemy.slowPercent > 0) {
+                ctx.strokeStyle = '#00ccff';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(enemy.x, enemy.y, enemy.radius + 3, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            // HP бар
             const hpW = enemy.radius * 2;
             const hpX = enemy.x - hpW / 2;
             const hpY = enemy.y - enemy.radius - 12;
@@ -630,12 +1027,43 @@ class Game {
             ctx.fillRect(hpX, hpY, hpW * (enemy.health / enemy.maxHealth), 5);
         }
 
-        // Снаряды
+        // Снаряды (шары)
         for (const proj of this.projectiles) {
+            // След
+            for (let i = 0; i < proj.trail.length; i++) {
+                const alpha = (i / proj.trail.length) * 0.5;
+                ctx.fillStyle = proj.color;
+                ctx.globalAlpha = alpha;
+                ctx.beginPath();
+                ctx.arc(proj.trail[i].x, proj.trail[i].y, proj.radius * (i / proj.trail.length), 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+            
+            // Сам шар
             ctx.fillStyle = proj.color;
             ctx.beginPath();
-            ctx.arc(proj.x, proj.y, 5, 0, Math.PI * 2);
+            ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
             ctx.fill();
+            
+            // Эффект свечения
+            ctx.shadowColor = proj.color;
+            ctx.shadowBlur = 10;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        // Прицел
+        if (this.state === 'battle' && this.selectedBallType && this.drawAim) {
+            ctx.strokeStyle = this.selectedBallType.color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(this.mouseX, this.mouseY, 20 + this.chargedBallPower * 10, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            ctx.fillStyle = this.selectedBallType.color;
+            ctx.font = '12px Arial';
+            ctx.fillText(`${Math.round(this.selectedBallType.cost * this.chargedBallPower)}⚡`, this.mouseX, this.mouseY - 25);
         }
 
         // Эффекты
