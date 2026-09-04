@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ferroid Defense</title>
+    <title>Ferroid Defense - Защита Башни</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -16,6 +16,7 @@
             font-family: 'Courier New', monospace;
             overflow: hidden;
             user-select: none;
+            background: linear-gradient(135deg, #0d0d0d 0%, #1a1a2e 50%, #0d0d0d 100%);
         }
 
         #gameContainer {
@@ -76,6 +77,7 @@
             justify-content: center;
             transition: all 0.2s;
             pointer-events: auto;
+            position: relative;
         }
 
         .tower-btn:hover {
@@ -88,11 +90,17 @@
             background: #1a3a2a;
             border-color: #00ff96;
             box-shadow: 0 0 20px rgba(0, 255, 150, 0.5);
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
         }
 
         .tower-btn .icon { font-size: 28px; pointer-events: none; }
         .tower-btn .cost { font-size: 14px; color: #00ff96; pointer-events: none; }
-        .tower-btn .key { font-size: 11px; color: #888; pointer-events: none; }
+        .tower-btn .key { font-size: 11px; color: #888; pointer-events: none; position: absolute; top: 2px; right: 5px; }
 
         #startWaveBtn {
             position: absolute;
@@ -172,6 +180,151 @@
             font-size: 70px;
             margin-bottom: 15px;
         }
+
+        /* Новые стили для меню */
+        .menu-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+
+        .menu-content {
+            text-align: center;
+            color: white;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .menu-title {
+            font-size: 48px;
+            font-weight: bold;
+            color: #00ff96;
+            text-shadow: 0 0 30px #00ff96, 0 0 60px #00ff96;
+            margin-bottom: 20px;
+            animation: glow 2s infinite;
+        }
+
+        @keyframes glow {
+            0%, 100% { text-shadow: 0 0 30px #00ff96, 0 0 60px #00ff96; }
+            50% { text-shadow: 0 0 50px #00ff96, 0 0 80px #00ff96, 0 0 100px #00ff96; }
+        }
+
+        .menu-subtitle {
+            font-size: 20px;
+            color: #ffcc00;
+            margin-bottom: 40px;
+        }
+
+        .level-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            padding: 20px;
+            margin: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 15px;
+            border: 2px solid #444;
+        }
+
+        .level-card {
+            width: 120px;
+            height: 120px;
+            background: #2a2a2a;
+            border: 3px solid #555;
+            border-radius: 15px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .level-card.locked {
+            opacity: 0.4;
+            cursor: not-allowed;
+            filter: grayscale(100%);
+        }
+
+        .level-card.unlocked:hover {
+            background: #3a3a3a;
+            border-color: #00ff96;
+            box-shadow: 0 0 25px rgba(0, 255, 150, 0.5);
+            transform: scale(1.1);
+        }
+
+        .level-card.completed {
+            border-color: #00ff96;
+            background: #1a3a2a;
+        }
+
+        .level-number {
+            font-size: 28px;
+            font-weight: bold;
+            color: #ffcc00;
+        }
+
+        .level-icon {
+            font-size: 35px;
+            margin: 10px 0;
+        }
+
+        .level-name {
+            font-size: 10px;
+            color: #aaa;
+            text-align: center;
+            padding: 0 5px;
+        }
+
+        .stars {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            font-size: 12px;
+            color: #ffcc00;
+        }
+
+        .achievement-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 24px;
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .back-button {
+            padding: 10px 20px;
+            background: #2a2a2a;
+            border: 2px solid #ff4444;
+            border-radius: 8px;
+            color: #ff4444;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 20px;
+            transition: all 0.3s;
+        }
+
+        .back-button:hover {
+            background: #3a1a1a;
+            box-shadow: 0 0 15px rgba(255, 68, 68, 0.3);
+        }
     </style>
 </head>
 <body>
@@ -210,7 +363,7 @@
     </div>
 
     <script src="config.js"></script>
-    <script src="game.js"></script>
     <script src="ui.js"></script>
+    <script src="game.js"></script>
 </body>
 </html>
